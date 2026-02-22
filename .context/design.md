@@ -26,6 +26,8 @@ other docs differ, this section wins.
   the result is sync. If either is async, the result is a `Promise`.
 - Retry `limit` includes the first attempt (`retry(3)` means up to 3 total
   attempts).
+- `retry(number)` uses constant backoff behavior.
+- `retry({ ... })` requires an explicit `backoff` field.
 - v1 timeout scope is `total` only and covers the full execution window
   (attempts, backoff waits, and `catch` execution).
 - `wrap` runs around the full run execution (not per attempt).
@@ -151,7 +153,7 @@ The builder accumulates an immutable configuration object:
 ```ts
 interface BuilderConfig {
   retry?: RetryPolicy
-  timeout?: TimeoutOptions
+  timeout?: TimeoutPolicy
   signal?: AbortSignal
   wraps?: WrapFn[]
 }
@@ -172,14 +174,14 @@ class TryBuilder {
 
   // Chainable config methods (return new builder)
 
-  retry(policy: number | RetryPolicy): TryBuilder {
+  retry(policy: RetryOptions): TryBuilder {
     return new TryBuilder({
       ...this.#config,
       retry: normalizeRetryPolicy(policy),
     })
   }
 
-  timeout(options: number | TimeoutOptions): TryBuilder {
+  timeout(options: TimeoutOptions): TryBuilder {
     return new TryBuilder({
       ...this.#config,
       timeout: normalizeTimeoutOptions(options),
@@ -301,7 +303,8 @@ All shared TypeScript types and interfaces:
   metadata)
 - `RunOptions<T, E>` --
   `{ try: (ctx: TryCtx) => MaybePromise<T>, catch: (e: unknown) => MaybePromise<E> }`
-- `RetryPolicy` -- `{ limit, delayMs, backoff }` and shorthand `number`
+- `RetryPolicy` -- object form `{ limit, delayMs, backoff }` and shorthand
+  `number` (constant backoff)
 - `TimeoutOptions` -- `{ ms, scope: "total" }` in v1
 - `WrapFn` -- signature for wrap middleware
 - `FlowExit<T>` -- branded type for flow exit values
@@ -321,10 +324,11 @@ retry attempt metadata (current attempt number, total limit).
 ### lib/retry.ts
 
 - `retryOptions()` factory for creating reusable policies
-- Internal retry loop with linear and exponential backoff strategies
+- Internal retry loop with constant and exponential backoff strategies
 - Respects abort signals between retry attempts
 - Normalizes shorthand (`3`) to full policy
-  (`{ limit: 3, delayMs: 0, backoff: "linear" }`)
+  (`{ limit: 3, delayMs: 0, backoff: "constant" }`)
+- Object policy form must include `backoff` explicitly
 
 ### lib/timeout.ts
 
