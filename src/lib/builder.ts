@@ -1,17 +1,18 @@
 import type { UnhandledException } from "./errors"
 import type {
   BuilderConfig,
-  RetryPolicy,
+  RetryOptions,
   RunTryFn,
   RunWithCatchOptions,
   TaskMap,
+  TimeoutPolicy,
   TimeoutOptions,
   WrapFn,
 } from "./types"
 import { normalizeRetryPolicy } from "./retry"
 import { executeRun } from "./runner"
 
-function normalizeTimeoutOptions(options: number | TimeoutOptions): TimeoutOptions {
+function normalizeTimeoutOptions(options: TimeoutOptions): TimeoutPolicy {
   if (typeof options === "number") {
     return { ms: options, scope: "total" }
   }
@@ -26,14 +27,14 @@ export class TryBuilder {
     this.#config = config
   }
 
-  retry(policy: number | RetryPolicy): TryBuilder {
+  retry(policy: RetryOptions): TryBuilder {
     return new TryBuilder({
       ...this.#config,
       retry: normalizeRetryPolicy(policy),
     })
   }
 
-  timeout(options: number | TimeoutOptions): TryBuilder {
+  timeout(options: TimeoutOptions): TryBuilder {
     return new TryBuilder({
       ...this.#config,
       timeout: normalizeTimeoutOptions(options),

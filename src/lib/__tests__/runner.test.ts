@@ -50,7 +50,7 @@ describe("executeRun", () => {
   it("passes normalized context to try", () => {
     const result = executeRun(
       {
-        retry: { limit: 3 },
+        retry: { backoff: "constant", limit: 3 },
       },
       (ctx) => ({
         attempt: ctx.retry.attempt,

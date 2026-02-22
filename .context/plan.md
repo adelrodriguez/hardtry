@@ -127,6 +127,10 @@ Exit criteria:
 
 - total-timeout semantics are locked.
 
+Future follow-up (post-v1 experiment):
+
+- evaluate `scope: "attempt"` timeout semantics and interaction with retry/backoff.
+
 ## Phase 5 - `.signal(...)` cancellation
 
 1. Implement external signal integration
