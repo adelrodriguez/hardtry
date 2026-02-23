@@ -1,7 +1,7 @@
 import { CancellationError, Panic, TimeoutError } from "./errors"
 
 export function assertUnreachable(value: never): never {
-  throw new Error(`Unreachable case: ${String(value)}`)
+  throw new Panic({ message: `Unreachable case: ${String(value)}` })
 }
 
 export function sleep(ms: number): Promise<void> {

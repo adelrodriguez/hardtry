@@ -1,4 +1,3 @@
-/* oxlint-disable typescript/no-unnecessary-type-parameters */
 import { describe, it } from "bun:test"
 import { retry, run, signal, timeout, wrap } from "../index"
 
