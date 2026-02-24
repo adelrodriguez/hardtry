@@ -504,4 +504,38 @@ describe("type inference", () => {
       }
     })
   })
+
+  describe("flow", () => {
+    it("infers union of $exit values", () => {
+      const result = try$.flow({
+        a() {
+          return this.$exit(42 as const)
+        },
+        b() {
+          if (Math.random() > 0.5) {
+            return this.$exit("stop" as const)
+          }
+
+          return null
+        },
+      })
+
+      type _assert = Expect<Equal<typeof result, Promise<42 | "stop">>>
+    })
+
+    it("infers never when no task uses $exit", () => {
+      if (typecheckOnly()) {
+        const result = try$.flow({
+          a() {
+            return 1
+          },
+          async b() {
+            return (await this.$result.a) + 1
+          },
+        })
+
+        type _assert = Expect<Equal<typeof result, Promise<never>>>
+      }
+    })
+  })
 })

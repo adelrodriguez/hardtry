@@ -1,6 +1,6 @@
 import type { BuilderConfig } from "./types/builder"
 import type { BaseTryCtx, TryCtx } from "./types/core"
-import type { AsyncRunInput, AsyncRunTryFn, RunCatchFn, RunTryFn, SyncRunTryFn } from "./types/run"
+import type { AsyncRunInput, AsyncRunTryFn, RunCatchFn, SyncRunTryFn } from "./types/run"
 import {
   CancellationError,
   Panic,
@@ -8,6 +8,7 @@ import {
   TimeoutError,
   UnhandledException,
 } from "./errors"
+import { executeWithWraps } from "./execution-shared"
 import { calculateRetryDelay, checkIsRetryExhausted, checkShouldAttemptRetry } from "./retry"
 import { SignalController } from "./signal"
 import { TimeoutController } from "./timeout"
@@ -100,21 +101,7 @@ export class RunExecution<T, E, Ctx extends BaseTryCtx> {
   }
 
   #runWithWraps(): T | E | RunnerError | Promise<T | E | RunnerError> {
-    const wraps = this.#config.wraps
-
-    if (!wraps || wraps.length === 0) {
-      return this.#runAttemptLoopSync(1)
-    }
-
-    let next: RunTryFn<unknown, TryCtx> = (_ctx) => this.#runAttemptLoopSync(1)
-
-    for (const wrap of wraps.toReversed()) {
-      const previous: RunTryFn<unknown, TryCtx> = next
-
-      next = (ctx) => wrap(ctx, previous)
-    }
-
-    return next(this.#ctx) as T | E | RunnerError | Promise<T | E | RunnerError>
+    return executeWithWraps(this.#config.wraps, this.#ctx, () => this.#runAttemptLoopSync(1))
   }
 
   #checkDidControlFail(cause?: unknown): CancellationError | TimeoutError | undefined {

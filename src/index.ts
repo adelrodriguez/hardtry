@@ -35,3 +35,4 @@ export type {
   SettledRejected,
   SettledResult,
 } from "./lib/types/all"
+export type { FlowExit } from "./lib/flow"
