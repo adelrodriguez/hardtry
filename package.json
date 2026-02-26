@@ -3,9 +3,11 @@
   "version": "0.0.0",
   "description": "A better try-catch",
   "keywords": [
-    "bun",
-    "library",
-    "template"
+    "abort-signal",
+    "error-handling",
+    "retry",
+    "timeout",
+    "try-catch"
   ],
   "homepage": "https://github.com/adelrodriguez/hardtry#readme",
   "bugs": {
@@ -29,7 +31,6 @@
     "dev": "bunup --watch",
     "fix": "adamantite fix",
     "release": "changeset publish",
-    "init": "bun run --bun scripts/init.ts",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",

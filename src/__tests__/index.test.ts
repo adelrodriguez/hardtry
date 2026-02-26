@@ -59,13 +59,11 @@ describe("run sync", () => {
     ).toThrow(Panic)
   })
 
-  it("throws when sync run receives a Promise-returning function via unsafe cast", () => {
+  it("throws Panic when sync run receives a Promise-returning function via unsafe cast", () => {
     const unsafeRun = run as unknown as (tryFn: () => number) => number
     const unsafeTry = (() => Promise.resolve(42)) as unknown as () => number
 
-    expect(() => unsafeRun(unsafeTry)).toThrow(
-      "The try function returned a Promise. Use runAsync() instead of run()."
-    )
+    expect(() => unsafeRun(unsafeTry)).toThrow(Panic)
   })
 
   it("supports multiple mapped error variants in sync object form", () => {

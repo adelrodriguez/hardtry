@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { BuilderConfig } from "../types/builder"
 import type { TryCtx } from "../types/core"
-import { RetryExhaustedError, TimeoutError } from "../errors"
+import { Panic, RetryExhaustedError, TimeoutError } from "../errors"
 import {
   calculateRetryDelay,
   checkIsRetryExhausted,
@@ -382,7 +382,7 @@ describe("executeRun retry", () => {
     expect(mapped).toBe(false)
   })
 
-  it("throws when sync runner is used with async-required retry policy", () => {
+  it("throws Panic when sync runner is used with async-required retry policy", () => {
     expect(() =>
       executeRunSync(
         {
@@ -392,10 +392,10 @@ describe("executeRun retry", () => {
           throw new Error("boom")
         }
       )
-    ).toThrow("Use runAsync() instead of run()")
+    ).toThrow(Panic)
   })
 
-  it("throws when sync runner is used with jittered constant retry", () => {
+  it("throws Panic when sync runner is used with jittered constant retry", () => {
     expect(() =>
       executeRunSync(
         {
@@ -405,7 +405,7 @@ describe("executeRun retry", () => {
           throw new Error("boom")
         }
       )
-    ).toThrow("Use runAsync() instead of run()")
+    ).toThrow(Panic)
   })
 
   it("applies linear backoff delays between retries", async () => {

@@ -68,12 +68,10 @@ describe("executeRunSync / executeRunAsync", () => {
       })
     })
 
-    it("throws when sync runner returns a promise via unsafe cast", () => {
+    it("throws Panic when sync runner returns a promise via unsafe cast", () => {
       const unsafeSyncFn = (() => Promise.resolve("ok")) as unknown as () => string
 
-      expect(() => executeRunSync({}, unsafeSyncFn)).toThrow(
-        "The try function returned a Promise. Use runAsync() instead of run()."
-      )
+      expect(() => executeRunSync({}, unsafeSyncFn)).toThrow(Panic)
     })
 
     it("returns CancellationError when signal is already aborted", () => {

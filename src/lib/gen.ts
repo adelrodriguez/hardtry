@@ -1,3 +1,5 @@
+import { Panic } from "./errors"
+
 export function executeGen(): never {
-  throw new Error("gen is not implemented yet")
+  throw new Panic({ message: "gen is not implemented yet" })
 }

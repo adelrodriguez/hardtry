@@ -19,6 +19,7 @@ import type {
   SyncRunInput,
   SyncRunTryFn,
 } from "./types/run"
+import { Panic } from "./errors"
 import { normalizeRetryPolicy } from "./retry"
 import { executeRunAsync, executeRunSync } from "./runner"
 
@@ -94,16 +95,16 @@ export class TryBuilder<
 
   all(_tasks: TaskMap): never {
     void this.#config
-    throw new Error("all is not implemented yet")
+    throw new Panic({ message: "all is not implemented yet" })
   }
 
   allSettled(_tasks: TaskMap): never {
     void this.#config
-    throw new Error("allSettled is not implemented yet")
+    throw new Panic({ message: "allSettled is not implemented yet" })
   }
 
   flow(_tasks: TaskMap): never {
     void this.#config
-    throw new Error("flow is not implemented yet")
+    throw new Panic({ message: "flow is not implemented yet" })
   }
 }

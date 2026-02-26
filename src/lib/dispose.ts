@@ -1,3 +1,5 @@
+import { Panic } from "./errors"
+
 export function createDisposer(): never {
-  throw new Error("dispose is not implemented yet")
+  throw new Panic({ message: "dispose is not implemented yet" })
 }

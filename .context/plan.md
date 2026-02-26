@@ -14,9 +14,9 @@ Goal: implement `hardtry` incrementally with behavior locked by
 - [ ] Phase 6 - `wrap` middleware (full-run scope)
 - [ ] Phase 7 - Builder API + root namespace exports
 - [ ] Phase 8 - `dispose` with `AsyncDisposableStack`
-- [ ] Phase 9 - `all` and `allSettled`
-- [ ] Phase 10 - `flow` + `$exit`
-- [ ] Phase 11 - `gen`
+- [ ] Phase 9 - `gen`
+- [ ] Phase 10 - `all` and `allSettled`
+- [ ] Phase 11 - `flow` + `$exit`
 - [ ] Phase 12 - Hardening + release readiness
 
 ## Principles
@@ -186,7 +186,17 @@ Exit criteria:
 
 - deterministic cleanup guarantees are enforced.
 
-## Phase 9 - `all` and `allSettled`
+## Phase 9 - `gen`
+
+1. Implement generator helper for result unwrapping
+2. Preserve union typing for accumulated error types
+3. Add runtime and type tests
+
+Exit criteria:
+
+- `gen` ergonomics and typing are stable.
+
+## Phase 10 - `all` and `allSettled`
 
 1. Implement `all(tasks)` with named task map
 2. Implement `allSettled(tasks)` with native-like settled typing
@@ -200,7 +210,7 @@ Exit criteria:
 
 - task APIs behave consistently and inference is acceptable.
 
-## Phase 10 - `flow` + `$exit`
+## Phase 11 - `flow` + `$exit`
 
 1. Implement `flow(tasks)` orchestration
 2. Implement `$exit(value)` early-return mechanism
@@ -213,16 +223,6 @@ Exit criteria:
 Exit criteria:
 
 - flow control and cleanup semantics are deterministic.
-
-## Phase 11 - `gen`
-
-1. Implement generator helper for result unwrapping
-2. Preserve union typing for accumulated error types
-3. Add runtime and type tests
-
-Exit criteria:
-
-- `gen` ergonomics and typing are stable.
 
 ## Phase 12 - Hardening + release readiness
 
