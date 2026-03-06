@@ -16,7 +16,7 @@ Goal: implement `hardtry` incrementally with behavior locked by
 - [x] Phase 8 - `dispose` with `AsyncDisposableStack`
 - [x] Phase 9 - `gen`
 - [x] Phase 10 - `all` and `allSettled`
-- [ ] Phase 11 - `flow` + `$exit`
+- [x] Phase 11 - `flow` + `$exit`
 - [ ] Phase 12 - Hardening + release readiness
 
 ## Principles

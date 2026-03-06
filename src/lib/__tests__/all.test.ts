@@ -497,6 +497,52 @@ describe("executeAll", () => {
 
       expect(signalSeen).toBe(true)
     })
+
+    it("applies wrap middleware around fail-fast all execution", async () => {
+      let wrapCalls = 0
+
+      const result = await executeAll(
+        {
+          wraps: [
+            (ctx, next) => {
+              wrapCalls += 1
+              expect(ctx.retry.attempt).toBe(1)
+              return next(ctx)
+            },
+          ],
+        },
+        {
+          a() {
+            return 1
+          },
+        }
+      )
+
+      expect(result).toEqual({ a: 1 })
+      expect(wrapCalls).toBe(1)
+    })
+
+    it("routes wrap errors through all catch mapping", async () => {
+      const mapped = await executeAll(
+        {
+          wraps: [
+            () => {
+              throw new Error("wrap boom")
+            },
+          ],
+        },
+        {
+          a() {
+            return 1
+          },
+        },
+        {
+          catch: (error) => (error as Error).message,
+        }
+      )
+
+      expect(mapped).toBe("wrap boom")
+    })
   })
 })
 
@@ -801,6 +847,32 @@ describe("executeAllSettled", () => {
       )
 
       expect(cleaned).toBe(true)
+    })
+  })
+
+  describe("builder integration", () => {
+    it("applies wrap middleware around settled all execution", async () => {
+      let wrapCalls = 0
+
+      const result = await executeAllSettled(
+        {
+          wraps: [
+            (ctx, next) => {
+              wrapCalls += 1
+              expect(ctx.retry.attempt).toBe(1)
+              return next(ctx)
+            },
+          ],
+        },
+        {
+          a() {
+            return "ok"
+          },
+        }
+      )
+
+      expect(result.a).toEqual({ status: "fulfilled", value: "ok" })
+      expect(wrapCalls).toBe(1)
     })
   })
 })

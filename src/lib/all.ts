@@ -11,11 +11,13 @@ import type {
 } from "./types/all"
 import type { BuilderConfig } from "./types/builder"
 import { Panic, TimeoutError } from "./errors"
+import { executeWithWraps } from "./execution-shared"
 import { TimeoutController } from "./timeout"
 import { checkIsPromiseLike } from "./utils"
 
 class AllExecution<T extends TaskRecord, C> {
   readonly #tasks: T
+  readonly #wraps: BuilderConfig["wraps"]
   readonly #settled: boolean
   readonly #options: AllOptions<T, C> | undefined
   readonly #taskNames: Array<keyof T & string>
@@ -26,14 +28,15 @@ class AllExecution<T extends TaskRecord, C> {
     Array<[(value: unknown) => void, (reason?: unknown) => void]>
   >()
   readonly #returnValue: Record<string, unknown> = {}
+  readonly #signal: AbortSignal
   readonly #internalController = new AbortController()
-  readonly #cleanupController = new AbortController()
   readonly #timeout: TimeoutController
   readonly #disposer = new AsyncDisposableStack()
   #failedTask: (keyof T & string) | undefined
 
   constructor(config: BuilderConfig, tasks: T, settled: boolean, options?: AllOptions<T, C>) {
     this.#tasks = tasks
+    this.#wraps = config.wraps
     this.#settled = settled
     this.#options = options
     this.#taskNames = Object.keys(tasks) as Array<keyof T & string>
@@ -43,62 +46,37 @@ class AllExecution<T extends TaskRecord, C> {
       (signal): signal is AbortSignal => signal !== undefined
     )
 
-    for (const sig of externalSignals) {
-      if (sig.aborted) {
-        this.#internalController.abort(sig.reason)
-      } else {
-        sig.addEventListener(
-          "abort",
-          () => {
-            this.#internalController.abort(sig.reason)
-          },
-          {
-            once: true,
-            signal: this.#cleanupController.signal,
-          }
-        )
-      }
-    }
+    const externalSignal = externalSignals.length > 0 ? AbortSignal.any(externalSignals) : undefined
+
+    this.#signal = externalSignal
+      ? AbortSignal.any([externalSignal, this.#internalController.signal])
+      : this.#internalController.signal
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    this.#cleanupController.abort()
     this.#timeout[Symbol.dispose]()
     await this.#disposer.disposeAsync()
   }
 
   async execute(): Promise<AllValue<T> | AllSettledResult<T> | C> {
-    const promises = this.#taskNames.map(async (name) => this.#runTask(name))
-
     try {
-      if (this.#settled) {
-        const result = await this.#timeout.race(
-          Promise.allSettled(promises).then(() => this.#returnValue as AllSettledResult<T>)
+      return (await Promise.resolve(
+        executeWithWraps(
+          this.#wraps,
+          {
+            retry: { attempt: 1, limit: 1 },
+            signal: this.#signal,
+          },
+          () => this.#executeTasks()
         )
-
-        if (result instanceof TimeoutError) {
-          throw result
-        }
-
-        return result
-      }
-
-      const result = await this.#timeout.race(
-        Promise.all(promises).then(() => this.#returnValue as AllValue<T>)
-      )
-
-      if (result instanceof TimeoutError) {
-        throw result
-      }
-
-      return result
+      )) as AllValue<T> | AllSettledResult<T> | C
     } catch (error) {
       if (!this.#settled && this.#options?.catch) {
         const catchFn = this.#options.catch
         const context = {
           failedTask: this.#failedTask,
           partial: this.#returnValue as Partial<AllValue<T>>,
-          signal: this.#internalController.signal,
+          signal: this.#signal,
         }
 
         try {
@@ -116,6 +94,32 @@ class AllExecution<T extends TaskRecord, C> {
 
       throw error
     }
+  }
+
+  async #executeTasks(): Promise<AllValue<T> | AllSettledResult<T>> {
+    const promises = this.#taskNames.map(async (name) => this.#runTask(name))
+
+    if (this.#settled) {
+      const result = await this.#timeout.race(
+        Promise.allSettled(promises).then(() => this.#returnValue as AllSettledResult<T>)
+      )
+
+      if (result instanceof TimeoutError) {
+        throw result
+      }
+
+      return result
+    }
+
+    const result = await this.#timeout.race(
+      Promise.all(promises).then(() => this.#returnValue as AllValue<T>)
+    )
+
+    if (result instanceof TimeoutError) {
+      throw result
+    }
+
+    return result
   }
 
   #waitForResult(taskName: keyof T, requesterTaskName?: keyof T): Promise<unknown> {
@@ -209,7 +213,7 @@ class AllExecution<T extends TaskRecord, C> {
       const context: TaskContext<T> = {
         $disposer: this.#disposer,
         $result: resultProxy,
-        $signal: this.#internalController.signal,
+        $signal: this.#signal,
       }
 
       const result = await (taskFn as (this: TaskContext<T>) => unknown).call(context)

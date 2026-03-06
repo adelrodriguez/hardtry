@@ -7,6 +7,27 @@ class PermissionDeniedError extends Error {}
 class NetworkError extends Error {}
 class RemoteServiceError extends Error {}
 
+function runCacheFlow(cachedValue: string | null) {
+  return try$.flow({
+    a() {
+      const cached = cachedValue
+
+      if (cached !== null) {
+        return this.$exit(cached)
+      }
+
+      return null
+    },
+    async b() {
+      await sleep(5)
+      return "api-value"
+    },
+    async c() {
+      const apiValue = await this.$result.b
+      return this.$exit(`${apiValue}-transformed`)
+    },
+  })
+}
 describe("runSync", () => {
   describe("function form", () => {
     it("returns value when function succeeds", () => {
@@ -237,10 +258,6 @@ describe("builder helpers", () => {
     expect(result).toBe(42)
   })
 
-  it("throws for unimplemented flow", () => {
-    expect(() => try$.flow({})).toThrow("flow is not implemented yet")
-  })
-
   it("keeps root run isolated from retry chains", async () => {
     const retried = await try$.retry(2).run(() => {
       throw new Error("boom")
@@ -280,6 +297,158 @@ describe("builder helpers", () => {
     await disposer[Symbol.asyncDispose]()
 
     expect(calls).toEqual(["cleanup"])
+  })
+})
+
+describe("flow", () => {
+  it("throws when no task exits", async () => {
+    try {
+      await try$.flow({
+        a() {
+          return 1
+        },
+        async b() {
+          return (await this.$result.a) + 1
+        },
+      })
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect((error as Error).message).toBe("Flow completed without exit")
+    }
+  })
+
+  it("returns value from $exit", async () => {
+    const result = await try$.flow({
+      async api() {
+        await sleep(50)
+        return "remote"
+      },
+      cache() {
+        return this.$exit("cached" as const)
+      },
+    })
+
+    expect(result).toBe("cached")
+  })
+
+  it("runs cleanup on early exit", async () => {
+    let cleaned = false
+
+    const result = await try$.flow({
+      first() {
+        this.$disposer.defer(() => {
+          cleaned = true
+        })
+
+        return this.$exit(42)
+      },
+      async second() {
+        if (!this.$signal.aborted) {
+          await new Promise<void>((resolve) => {
+            this.$signal.addEventListener(
+              "abort",
+              () => {
+                resolve()
+              },
+              { once: true }
+            )
+          })
+        }
+
+        return 0
+      },
+    })
+
+    expect(result).toBe(42)
+    expect(cleaned).toBe(true)
+  })
+
+  it("keeps dependency flow order from a to b to c", async () => {
+    const order: string[] = []
+
+    const result = await try$.flow({
+      a() {
+        order.push("a")
+        return 1
+      },
+      async b() {
+        const a = await this.$result.a
+        order.push("b")
+        return a + 1
+      },
+      async c() {
+        const b = await this.$result.b
+        order.push("c")
+        return this.$exit(b + 1)
+      },
+    })
+
+    expect(order).toEqual(["a", "b", "c"])
+    expect(result).toBe(3)
+  })
+
+  it("returns cached value with early exit when cache has data", async () => {
+    const result = await runCacheFlow("cached-value")
+
+    expect(result).toBe("cached-value")
+  })
+
+  it("fetches and transforms api value when cache is empty", async () => {
+    const result = await runCacheFlow(null)
+
+    expect(result).toBe("api-value-transformed")
+  })
+
+  it("applies wrap middleware in chained flow execution", async () => {
+    let wrapCalls = 0
+
+    const result = await try$
+      .wrap((ctx, next) => {
+        wrapCalls += 1
+        expect(ctx.retry.attempt).toBe(1)
+        return next(ctx)
+      })
+      .flow({
+        a() {
+          return this.$exit("done")
+        },
+      })
+
+    expect(result).toBe("done")
+    expect(wrapCalls).toBe(1)
+  })
+
+  it("applies retry policy in chained flow execution", async () => {
+    let attempts = 0
+
+    const result = await try$.retry(2).flow({
+      a() {
+        attempts += 1
+
+        if (attempts === 1) {
+          throw new Error("boom")
+        }
+
+        return this.$exit("ok")
+      },
+    })
+
+    expect(result).toBe("ok")
+    expect(attempts).toBe(2)
+  })
+
+  it("applies timeout policy in chained flow execution", async () => {
+    try {
+      await try$.timeout(5).flow({
+        async a() {
+          await sleep(20)
+          return this.$exit("late")
+        },
+      })
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(try$.TimeoutError)
+    }
   })
 })
 
@@ -444,6 +613,25 @@ describe("all", () => {
     expect(result).toEqual({ a: 1, b: 2 })
   })
 
+  it("applies wrap middleware around all execution", async () => {
+    let wrapCalls = 0
+
+    const result = await try$
+      .wrap((ctx, next) => {
+        wrapCalls += 1
+        expect(ctx.retry.attempt).toBe(1)
+        return next(ctx)
+      })
+      .all({
+        a() {
+          return 1
+        },
+      })
+
+    expect(result).toEqual({ a: 1 })
+    expect(wrapCalls).toBe(1)
+  })
+
   it("honors cancellation signal from builder options", async () => {
     const controller = new AbortController()
 
@@ -477,119 +665,6 @@ describe("all", () => {
     } catch (error) {
       expect((error as Error).message).toBe("stop")
     }
-  })
-})
-
-describe("settled().all", () => {
-  it("returns empty object when task map is empty", async () => {
-    const result = await try$.settled().all({})
-
-    expect(result).toEqual({})
-  })
-
-  it("returns mixed fulfilled and rejected task results", async () => {
-    const boom = new Error("boom")
-
-    const result = await try$.settled().all({
-      a() {
-        return 1
-      },
-      b() {
-        throw boom
-      },
-    })
-
-    expect(result.a).toEqual({ status: "fulfilled", value: 1 })
-    expect(result.b).toEqual({ reason: boom, status: "rejected" })
-  })
-
-  it("does not reject outer promise when tasks fail", async () => {
-    const result = await try$.settled().all({
-      a() {
-        throw new Error("a failed")
-      },
-      b() {
-        throw new Error("b failed")
-      },
-    })
-
-    expect(result.a.status).toBe("rejected")
-    expect(result.b.status).toBe("rejected")
-  })
-
-  it("allows dependent tasks to handle failed dependencies", async () => {
-    const result = await try$.settled().all({
-      a() {
-        throw new Error("a failed")
-      },
-      async b() {
-        try {
-          return await this.$result.a
-        } catch {
-          return "fallback"
-        }
-      },
-    })
-
-    expect(result.a.status).toBe("rejected")
-    expect(result.b).toEqual({ status: "fulfilled", value: "fallback" })
-  })
-
-  it("returns settled results with retry and timeout builder options", async () => {
-    const result = await try$
-      .retry(3)
-      .timeout(100)
-      .settled()
-      .all({
-        a() {
-          return 1
-        },
-        b() {
-          throw new Error("boom")
-        },
-      })
-
-    expect(result.a).toEqual({ status: "fulfilled", value: 1 })
-    expect(result.b.status).toBe("rejected")
-  })
-
-  it("honors cancellation signal from builder options", async () => {
-    const controller = new AbortController()
-
-    const pending = try$
-      .retry(3)
-      .timeout(100)
-      .signal(controller.signal)
-      .settled()
-      .all({
-        async a() {
-          await sleep(20)
-
-          if (this.$signal.aborted) {
-            throw this.$signal.reason
-          }
-
-          return 1
-        },
-        async b() {
-          await sleep(25)
-
-          if (this.$signal.aborted) {
-            throw this.$signal.reason
-          }
-
-          return 2
-        },
-      })
-
-    setTimeout(() => {
-      controller.abort(new Error("stop"))
-    }, 5)
-
-    const result = await pending
-
-    expect(result.a.status).toBe("rejected")
-    expect(result.b.status).toBe("rejected")
   })
 })
 

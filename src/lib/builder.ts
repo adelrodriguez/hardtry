@@ -12,6 +12,7 @@ import type {
   TimeoutError,
   UnhandledException,
 } from "./errors"
+import type { FlowResult, InferredFlowTaskContext } from "./flow"
 import type { BuilderConfig, TimeoutOptions, WrapFn } from "./types/builder"
 import type {
   DefaultTryCtxProperties,
@@ -22,7 +23,7 @@ import type {
 import type { RetryOptions } from "./types/retry"
 import type { AsyncRunInput, RunTryFn, SyncRunInput, SyncRunTryFn } from "./types/run"
 import { executeAll, executeAllSettled } from "./all"
-import { Panic } from "./errors"
+import { executeFlow } from "./flow"
 import { normalizeRetryPolicy } from "./retry"
 import { executeRun } from "./run"
 import { executeRunSync } from "./run-sync"
@@ -136,9 +137,10 @@ export class WrappedRunBuilder<
     >
   }
 
-  flow(_tasks: TaskRecord): never {
-    void this.#config
-    throw new Panic({ message: "flow is not implemented yet" })
+  flow<T extends TaskRecord>(
+    tasks: T & ThisType<InferredFlowTaskContext<T>>
+  ): Promise<FlowResult<T>> {
+    return executeFlow(this.#config, tasks)
   }
 }
 
@@ -225,8 +227,9 @@ export class RunBuilder<
     >
   }
 
-  flow(_tasks: TaskRecord): never {
-    void this.#config
-    throw new Panic({ message: "flow is not implemented yet" })
+  flow<T extends TaskRecord>(
+    tasks: T & ThisType<InferredFlowTaskContext<T>>
+  ): Promise<FlowResult<T>> {
+    return executeFlow(this.#config, tasks)
   }
 }
