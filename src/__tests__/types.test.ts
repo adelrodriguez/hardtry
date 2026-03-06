@@ -708,5 +708,28 @@ describe("type inference", () => {
         >
       >
     })
+
+    it("retry + allSettled return type has no RetryExhaustedError", () => {
+      if (typecheckOnly()) return
+
+      const result = try$.retry(3).allSettled({
+        a() {
+          return 1
+        },
+        b() {
+          return "ok"
+        },
+      })
+
+      type _assert = Expect<
+        Equal<
+          typeof result,
+          Promise<{
+            a: try$.SettledResult<1>
+            b: try$.SettledResult<"ok">
+          }>
+        >
+      >
+    })
   })
 })

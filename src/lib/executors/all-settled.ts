@@ -1,11 +1,13 @@
 import type {
   AllSettledResult,
   InferredTaskContext,
+  SettledResult,
   TaskRecord,
   TaskValidation,
 } from "../types/all"
 import type { BuilderConfig } from "../types/builder"
-import { TimeoutError } from "../errors"
+import { CancellationError, TimeoutError } from "../errors"
+import { checkIsControlError } from "../utils"
 import { BaseExecution } from "./base"
 import { TaskExecution } from "./shared"
 
@@ -15,19 +17,92 @@ class AllSettledExecution<T extends TaskRecord> extends BaseExecution<
   readonly #tasks: T
 
   constructor(config: BuilderConfig, tasks: T) {
-    super(config, { retryLimit: 1 })
+    super(config)
     this.#tasks = tasks
   }
 
   protected override async executeCore(): Promise<AllSettledResult<T>> {
-    await using execution = new TaskExecution(this.signal.signal, this.#tasks, "settled")
-    const result = await this.timeout.race(execution.execute())
+    let currentAttempt = 1
 
-    if (result instanceof TimeoutError) {
-      throw result
+    // oxlint-disable-next-line typescript/no-unnecessary-condition
+    while (true) {
+      const controlBeforeAttempt = this.checkBeforeAttempt()
+
+      if (controlBeforeAttempt) {
+        throw controlBeforeAttempt
+      }
+
+      this.ctx.retry.attempt = currentAttempt
+
+      try {
+        // oxlint-disable-next-line no-await-in-loop
+        const result = await this.#executeAttempt()
+
+        if (result instanceof CancellationError || result instanceof TimeoutError) {
+          throw result
+        }
+
+        const settled = result
+        const firstRejection = AllSettledExecution.#findFirstRejection(settled)
+
+        // All tasks fulfilled — return results
+        if (firstRejection === undefined) {
+          return settled
+        }
+
+        // Some tasks rejected — check retry policy
+        const retryDecision = this.buildRetryDecision(firstRejection)
+
+        if (!retryDecision.shouldAttemptRetry) {
+          // Retries exhausted or shouldRetry returned false — return settled results
+          return settled
+        }
+
+        // oxlint-disable-next-line no-await-in-loop
+        const delayControlResult = await this.waitForRetryDelay(retryDecision.delay)
+
+        if (delayControlResult) {
+          throw delayControlResult
+        }
+
+        currentAttempt += 1
+      } catch (error) {
+        if (checkIsControlError(error)) {
+          throw error
+        }
+
+        const controlAfterFailure = this.checkDidControlFail(error)
+
+        if (controlAfterFailure) {
+          throw controlAfterFailure
+        }
+
+        throw error
+      }
+    }
+  }
+
+  async #executeAttempt(): Promise<AllSettledResult<T> | CancellationError | TimeoutError> {
+    await using execution = new TaskExecution(this.signal.signal, this.#tasks, "settled")
+    const result = await this.race(execution.execute())
+
+    if (result instanceof CancellationError || result instanceof TimeoutError) {
+      return result
     }
 
     return result as AllSettledResult<T>
+  }
+
+  static #findFirstRejection<T extends TaskRecord>(settled: AllSettledResult<T>): unknown {
+    for (const key of Object.keys(settled)) {
+      const entry = settled[key] as SettledResult<unknown>
+
+      if (entry.status === "rejected") {
+        return entry.reason
+      }
+    }
+
+    return undefined
   }
 }
 
