@@ -804,10 +804,12 @@ describe("allSettled", () => {
       controller.abort(new Error("stop"))
     }, 5)
 
-    const result = await pending
-
-    expect(result.a.status).toBe("rejected")
-    expect(result.b.status).toBe("rejected")
+    try {
+      await pending
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(CancellationError)
+    }
   })
 })
 
@@ -910,7 +912,7 @@ describe("all", () => {
     expect(result).toEqual({
       failedTask: "b",
       hasSignal: true,
-      partialA: undefined,
+      partialA: 1,
     })
   })
 
@@ -1022,7 +1024,7 @@ describe("all", () => {
       await pending
       expect.unreachable("should have thrown")
     } catch (error) {
-      expect((error as Error).message).toBe("stop")
+      expect(error).toBeInstanceOf(CancellationError)
     }
   })
 })

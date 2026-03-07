@@ -18,6 +18,7 @@ export class TaskExecution<T extends TaskRecord> {
   readonly #signal: AbortSignal
   readonly #disposer = new AsyncDisposableStack()
   #failedTask: (keyof T & string) | undefined
+  #firstRejection: unknown
 
   constructor(signal: AbortSignal | undefined, tasks: T, mode: TaskExecutionMode) {
     this.#tasks = tasks
@@ -52,7 +53,12 @@ export class TaskExecution<T extends TaskRecord> {
       return this.#returnValue
     }
 
-    await Promise.all(promises)
+    await Promise.allSettled(promises)
+
+    if (this.#firstRejection !== undefined) {
+      throw this.#firstRejection
+    }
+
     return this.#returnValue
   }
 
@@ -164,6 +170,7 @@ export class TaskExecution<T extends TaskRecord> {
       const result = await (taskFn as (this: TaskContext<T>) => unknown).call(context)
       this.#handleResult(taskName, result)
     } catch (error) {
+      this.#firstRejection ??= error
       this.#handleError(taskName, error)
 
       if (this.#mode === "fail-fast") {

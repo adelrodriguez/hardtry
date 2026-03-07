@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { CancellationError, Panic, TimeoutError } from "../../errors"
+import { CancellationError, Panic, RetryExhaustedError, TimeoutError } from "../../errors"
 import { sleep } from "../../utils"
 import { executeAll } from "../all"
 
@@ -195,6 +195,25 @@ describe("executeAll", () => {
   })
 
   describe("error handling", () => {
+    it("waits for all tasks to settle before returning on failure", async () => {
+      let slowTaskSettled = false
+
+      await executeAll(
+        {},
+        {
+          a() {
+            throw new Error("boom")
+          },
+          async b() {
+            await sleep(50)
+            slowTaskSettled = true
+          },
+        }
+      ).catch(() => null)
+
+      expect(slowTaskSettled).toBe(true)
+    })
+
     it("rejects on first task failure (fail-fast)", async () => {
       try {
         await executeAll(
@@ -471,53 +490,23 @@ describe("executeAll", () => {
       expect(taskSignalAborted).toBe(true)
     })
 
-    it("rejects with CancellationError when signal aborts during catch execution", async () => {
+    it("throws CancellationError for already-aborted external signal", async () => {
       const controller = new AbortController()
-
-      const promise = executeAll(
-        { signals: [controller.signal] },
-        {
-          a() {
-            throw new Error("boom")
-          },
-        },
-        {
-          catch: async () => {
-            await sleep(20)
-            return "mapped"
-          },
-        }
-      )
-
-      setTimeout(() => {
-        controller.abort(new Error("external abort"))
-      }, 5)
+      controller.abort(new Error("pre-aborted"))
 
       try {
-        await promise
+        await executeAll(
+          { signals: [controller.signal] },
+          {
+            a() {
+              return 1
+            },
+          }
+        )
         expect.unreachable("should have thrown")
       } catch (error) {
         expect(error).toBeInstanceOf(CancellationError)
       }
-    })
-
-    it("handles already-aborted external signal", async () => {
-      const controller = new AbortController()
-      controller.abort(new Error("pre-aborted"))
-
-      let signalAborted = false
-
-      await executeAll(
-        { signals: [controller.signal] },
-        {
-          a() {
-            signalAborted = this.$signal.aborted
-            return 1
-          },
-        }
-      )
-
-      expect(signalAborted).toBe(true)
     })
 
     it("rejects with CancellationError when signal aborts during catch execution", async () => {
@@ -602,6 +591,187 @@ describe("executeAll", () => {
       ).catch(() => null)
 
       expect(cleaned).toBe(true)
+    })
+  })
+
+  describe("retry", () => {
+    it("throws RetryExhaustedError when all retries are exhausted", async () => {
+      try {
+        await executeAll(
+          {
+            retry: {
+              backoff: "constant",
+              delayMs: 0,
+              limit: 2,
+            },
+          },
+          {
+            a() {
+              throw new Error("boom")
+            },
+          }
+        )
+        expect.unreachable("should have thrown")
+      } catch (error) {
+        expect(error).toBeInstanceOf(RetryExhaustedError)
+      }
+    })
+
+    it("waits for all tasks to settle before retrying", async () => {
+      let concurrentRuns = 0
+      let maxConcurrentRuns = 0
+      let attempts = 0
+
+      const result = await executeAll(
+        {
+          retry: {
+            backoff: "constant",
+            delayMs: 0,
+            limit: 2,
+          },
+        },
+        {
+          a() {
+            attempts += 1
+
+            if (attempts === 1) {
+              throw new Error("boom")
+            }
+
+            return 42
+          },
+          async b() {
+            concurrentRuns += 1
+            maxConcurrentRuns = Math.max(maxConcurrentRuns, concurrentRuns)
+            await sleep(50)
+            concurrentRuns -= 1
+          },
+        }
+      )
+
+      expect(result.a).toBe(42)
+      expect(maxConcurrentRuns).toBe(1)
+    })
+
+    it("slow sibling from failed attempt settles before next attempt starts", async () => {
+      const timestamps: string[] = []
+      let attempts = 0
+
+      const result = await executeAll(
+        {
+          retry: {
+            backoff: "constant",
+            delayMs: 0,
+            limit: 2,
+          },
+        },
+        {
+          a() {
+            attempts += 1
+
+            if (attempts === 1) {
+              throw new Error("boom")
+            }
+
+            timestamps.push("attempt2-start")
+            return 42
+          },
+          async b() {
+            if (attempts === 1) {
+              await sleep(50)
+              timestamps.push("attempt1-b-settled")
+            }
+          },
+        }
+      )
+
+      expect(result.a).toBe(42)
+      expect(timestamps).toEqual(["attempt1-b-settled", "attempt2-start"])
+    })
+
+    it("applies retry policy to all execution", async () => {
+      let attempts = 0
+
+      const result = await executeAll(
+        {
+          retry: {
+            backoff: "constant",
+            delayMs: 0,
+            limit: 2,
+          },
+        },
+        {
+          a() {
+            attempts += 1
+
+            if (attempts === 1) {
+              throw new Error("boom")
+            }
+
+            return 42
+          },
+        }
+      )
+
+      expect(result.a).toBe(42)
+      expect(attempts).toBe(2)
+    })
+
+    it("does not retry when catch handler recovers from failure", async () => {
+      let attempts = 0
+
+      const result = await executeAll(
+        {
+          retry: {
+            backoff: "constant",
+            delayMs: 0,
+            limit: 3,
+          },
+        },
+        {
+          a() {
+            attempts += 1
+            throw new Error("boom")
+          },
+        },
+        {
+          catch: () => "recovered" as const,
+        }
+      )
+
+      expect(result).toBe("recovered")
+      expect(attempts).toBe(1)
+    })
+
+    it("does not retry when catch handler throws Panic", async () => {
+      let attempts = 0
+
+      try {
+        await executeAll(
+          {
+            retry: {
+              backoff: "constant",
+              delayMs: 0,
+              limit: 3,
+            },
+          },
+          {
+            a() {
+              attempts += 1
+              throw new Error("boom")
+            },
+          },
+          {
+            catch() {
+              throw new Error("catch failed")
+            },
+          }
+        )
+        expect.unreachable("should have thrown")
+      } catch (error) {
+        expect(error).toBeInstanceOf(Panic)
+        expect(attempts).toBe(1)
+      }
     })
   })
 
