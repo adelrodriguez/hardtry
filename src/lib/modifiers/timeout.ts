@@ -73,22 +73,22 @@ export class TimeoutController {
     return this.#abort(cause)
   }
 
-  async race<V>(promise: PromiseLike<V>, cause?: unknown): Promise<V | TimeoutError> {
+  race<V>(promise: PromiseLike<V>, cause?: unknown): PromiseLike<V | TimeoutError> {
     if (!this.signal) {
       return promise
     }
 
     if (this.#remaining <= 0) {
-      return this.#abort(cause)
+      return Promise.resolve(this.#abort(cause))
     }
 
     const timedOut = this.checkDidTimeout(cause)
 
     if (timedOut) {
-      return timedOut
+      return Promise.resolve(timedOut)
     }
 
-    return await resolveWithAbort(
+    return resolveWithAbort(
       this.signal,
       promise,
       () =>

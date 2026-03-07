@@ -39,7 +39,7 @@ export abstract class BaseExecution<TResult = unknown> {
   protected readonly config: BuilderConfig
   protected readonly ctx: TryCtx
   protected readonly executionSignal: AbortSignal | undefined
-  readonly #wrapCtx: WrapCtx
+  #wrapCtxCache: WrapCtx | undefined
   readonly #signalController: SignalController | undefined
   readonly #timeoutController: TimeoutController | undefined
 
@@ -52,7 +52,6 @@ export abstract class BaseExecution<TResult = unknown> {
     )
     this.executionSignal = this.#signalController?.signal
     this.ctx = BaseExecution.createContext(config, this.executionSignal, options.retryLimit)
-    this.#wrapCtx = BaseExecution.createWrapContext(this.ctx)
   }
 
   execute(): TResult {
@@ -77,6 +76,10 @@ export abstract class BaseExecution<TResult = unknown> {
   protected abstract executeCore(): TResult
 
   [Symbol.dispose](): void {
+    if (!this.#timeoutController && !this.#signalController) {
+      return
+    }
+
     using disposer = new DisposableStack()
     if (this.#timeoutController) {
       disposer.use(this.#timeoutController)
@@ -247,5 +250,10 @@ export abstract class BaseExecution<TResult = unknown> {
       isRetryExhausted: this.checkIsRetryExhaustedCurrentAttempt(),
       shouldAttemptRetry,
     }
+  }
+
+  get #wrapCtx(): WrapCtx {
+    this.#wrapCtxCache ??= BaseExecution.createWrapContext(this.ctx)
+    return this.#wrapCtxCache
   }
 }

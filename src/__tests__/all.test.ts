@@ -44,6 +44,20 @@ describe("all", () => {
     expect(result).toEqual({ a: 10, b: 15 })
   })
 
+  it("passes a non-aborted task signal when no external signal is configured", async () => {
+    let taskSignalAborted: boolean | undefined
+
+    const result = await try$.all({
+      a() {
+        taskSignalAborted = this.$signal.aborted
+        return 1
+      },
+    })
+
+    expect(result).toEqual({ a: 1 })
+    expect(taskSignalAborted).toBe(false)
+  })
+
   it("rejects on first task failure", async () => {
     try {
       await try$.all({
@@ -117,6 +131,32 @@ describe("all", () => {
     await sleep(20)
 
     expect(signalAborted).toBe(true)
+  })
+
+  it("aborts dependency waiters when a sibling task fails", async () => {
+    let signalAbortedWhileWaiting = false
+
+    try {
+      await try$.all({
+        a() {
+          throw new Error("boom")
+        },
+        async b() {
+          try {
+            await this.$result.a
+            return 2
+          } catch (error) {
+            signalAbortedWhileWaiting = this.$signal.aborted
+            throw error
+          }
+        },
+      })
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect((error as Error).message).toBe("boom")
+    }
+
+    expect(signalAbortedWhileWaiting).toBe(true)
   })
 
   it("rejects when a task accesses its own result", async () => {
@@ -249,6 +289,27 @@ describe("all", () => {
     })
   })
 
+  it("keeps catch-context signal usable after failure", async () => {
+    const result = await try$.all(
+      {
+        a() {
+          throw new Error("boom")
+        },
+      },
+      {
+        catch: (_error, ctx) => ({
+          aborted: ctx.signal.aborted,
+          hasSignal: ctx.signal instanceof AbortSignal,
+        }),
+      }
+    )
+
+    expect(result).toEqual({
+      aborted: true,
+      hasSignal: true,
+    })
+  })
+
   it("throws Panic when all catch throws", async () => {
     try {
       await try$.all(
@@ -334,6 +395,33 @@ describe("all", () => {
     expect(wrapCalls).toBe(1)
   })
 
+  it("runs wrap promise cleanup when all() starts with an already-aborted signal", async () => {
+    const controller = new AbortController()
+    let cleaned = false
+
+    controller.abort(new Error("stop"))
+
+    try {
+      await try$
+        .wrap((_, next) =>
+          Promise.resolve(next()).finally(() => {
+            cleaned = true
+          })
+        )
+        .signal(controller.signal)
+        .all({
+          a() {
+            return 1
+          },
+        })
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(CancellationError)
+    }
+
+    expect(cleaned).toBe(true)
+  })
+
   it("honors cancellation signal from builder options", async () => {
     const controller = new AbortController()
 
@@ -377,6 +465,22 @@ describe("all", () => {
       },
     })
 
+    expect(cleaned).toBe(true)
+  })
+
+  it("allows disposer usage in a successful task without external cancellation", async () => {
+    let cleaned = false
+
+    const result = await try$.all({
+      a() {
+        this.$disposer.defer(() => {
+          cleaned = true
+        })
+        return 1
+      },
+    })
+
+    expect(result).toEqual({ a: 1 })
     expect(cleaned).toBe(true)
   })
 
