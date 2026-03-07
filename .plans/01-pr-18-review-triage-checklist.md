@@ -135,16 +135,25 @@ Done when:
 
 ### Step 3 - Validate `retry.shouldRetry` runtime results strictly
 
+Status:
+
+- Completed on 2026-03-07.
+
 Objective:
 
-- Fail fast when `shouldRetry` returns anything other than a boolean.
+- Allow async `shouldRetry` for async runs while failing fast on invalid
+  resolved values and rejecting any `runSync()` retry policy that includes
+  `shouldRetry`.
 
 Current code paths:
 
 - `src/lib/modifiers/retry.ts`
-- `src/lib/executors/base.ts`
+- `src/lib/executors/run.ts`
+- `src/lib/executors/run-sync.ts`
 - `src/lib/executors/__tests__/retry.test.ts`
 - `src/lib/modifiers/__tests__/retry.test.ts`
+- `src/__tests__/index.test.ts`
+- `src/__tests__/types.test.ts`
 
 Implementation approach:
 
@@ -152,18 +161,33 @@ Implementation approach:
   `src/lib/modifiers/retry.ts`, because that is where the `shouldRetry` result
   is currently consumed.
 - Add a dedicated `Panic` code for invalid `shouldRetry` return values.
-- Reject promise-like values and any non-boolean truthy/falsy value; do not
-  coerce them into retry decisions.
+- Allow `checkShouldAttemptRetry(...)` to return either a boolean or a promise
+  of boolean so async execution can await `shouldRetry` without changing the
+  builder surface.
+- Validate resolved async `shouldRetry` values the same way as sync values:
+  any non-boolean result panics with the framework error.
+- Keep `runSync()` on the existing invariant model instead of splitting the
+  public retry-policy types: direct sync execution rejects any retry config
+  that includes `shouldRetry`, delay, or jitter with
+  `RUN_SYNC_ASYNC_RETRY_POLICY`.
 
 Regression coverage:
 
-- Add modifier-level tests for promise-like and non-boolean returns.
-- Add executor-level retry tests that use unsafe casts so the runtime guard is
-  exercised through actual execution.
+- Add modifier-level tests for async, thenable, and non-boolean `shouldRetry`
+  results.
+- Add executor-level retry tests that prove async `run()` awaits
+  `shouldRetry`, invalid resolved values panic, and timeout still wins during
+  async retry-decision evaluation.
+- Add sync executor tests that prove any retry policy including `shouldRetry`
+  trips the sync invariant.
+- Add root-level and type-level coverage for async `shouldRetry` on the async
+  retry builder.
 
 Done when:
 
+- Async `run()` may await `retry.shouldRetry`.
 - Invalid `shouldRetry` results fail deterministically with a framework panic.
+- `runSync()` rejects retry policies that include `shouldRetry`.
 - Retry exhaustion is no longer reachable through non-boolean coercion.
 
 ### Step 4 - Fix `executeRun()` object-form overloads
