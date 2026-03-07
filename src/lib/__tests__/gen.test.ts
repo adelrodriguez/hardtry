@@ -137,7 +137,7 @@ describe("driveGen", () => {
     }
   })
 
-  it("preserves Panic when factory throws a control error", () => {
+  it("preserves Panic when factory throws Panic", () => {
     const panic = new Panic("FLOW_NO_EXIT")
 
     try {

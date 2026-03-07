@@ -1,8 +1,8 @@
 import type { BuilderConfig } from "../types/builder"
 import type { BaseTryCtx } from "../types/core"
 import type { AsyncRunInput, RunCatchFn, RunTryFn } from "../types/run"
-import { Panic, RetryExhaustedError, UnhandledException } from "../errors"
-import { checkIsControlError, checkIsPromiseLike } from "../utils"
+import { ControlError, Panic, RetryExhaustedError, UnhandledException } from "../errors"
+import { checkIsPromiseLike } from "../utils"
 import { BaseExecution, RetryDirective, type RetryDecision, type RunnerError } from "./base"
 
 /** Encapsulates the shared mutable state and logic for a single run execution. */
@@ -25,7 +25,11 @@ export class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
 
   /** Resolve an attempt error into either a terminal result or a retry decision. */
   async #resolveFailure(error: unknown): Promise<E | RunnerError | RetryDirective> {
-    if (checkIsControlError(error)) {
+    if (error instanceof Panic) {
+      throw error
+    }
+
+    if (error instanceof ControlError) {
       return error
     }
 

@@ -1,4 +1,4 @@
-import type { Panic, RetryExhaustedError, UnhandledException } from "../errors"
+import type { RetryExhaustedError, UnhandledException } from "../errors"
 import type { BuilderConfig, WrapCtx } from "../types/builder"
 import type { TryCtx } from "../types/core"
 import { CancellationError, TimeoutError } from "../errors"
@@ -23,7 +23,6 @@ export type RetryDecision = {
 
 export type RunnerError =
   | CancellationError
-  | Panic
   | RetryExhaustedError
   | TimeoutError
   | UnhandledException

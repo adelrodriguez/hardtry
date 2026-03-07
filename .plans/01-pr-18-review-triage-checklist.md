@@ -8,22 +8,19 @@ Land the remaining correctness and public-type fixes from PR #18 in one
 follow-up pass, while keeping refactors and cleanup work out of scope unless
 the correctness changes make them effectively free.
 
-## Recommended Scope
+## Progress Checklist
 
-Ship in this pass:
-
-- Step 1: top-level `runSync()` panic semantics
-- Step 2: observational, read-only wrap semantics
-- Step 3: strict `shouldRetry` runtime validation
-- Step 4: `executeRun()` overload alignment
-- Step 5: remove `Panic` from normal run result semantics
-- Step 6: `GenResult` public type fix
-- Step 7: shared executor test stabilization
-
-Defer unless the earlier steps force nearby edits:
-
-- Step 8: `FlowExecution` / `TaskExecution` refactor
-- Step 9: resolver queue cleanup
+- [x] Step 1: top-level `runSync()` panic semantics
+- [x] Step 2: observational, read-only wrap semantics
+- [x] Step 3: strict `shouldRetry` runtime validation
+- [x] Step 4: `executeRun()` overload alignment
+- [x] Step 5: remove `Panic` from normal run result semantics
+- [x] Step 6: `gen()` thrown-failure orchestration semantics
+- [ ] Step 7: shared executor test stabilization
+- [ ] Step 8: `FlowExecution` / `TaskExecution` refactor
+      Defer unless earlier steps force touching both implementations.
+- [ ] Step 9: resolver queue cleanup
+      Optional cleanup only; defer unless `shared.ts` is already open for another reason.
 
 ## Working Rules
 
@@ -228,6 +225,10 @@ Done when:
 
 ### Step 5 - Remove `Panic` from normal run result semantics
 
+Status:
+
+- Completed on 2026-03-07.
+
 Objective:
 
 - Ensure `Panic` remains an exceptional failure path instead of appearing in
@@ -277,35 +278,56 @@ Dependency note:
 - Land this before widening any additional public async result types so
   `Panic` does not leak into exported unions as a normal return case.
 
-### Step 6 - Add `UnhandledException` to public `GenResult`
+### Step 6 - Keep `GenResult` narrow and let `gen()` throw unexpected failures
+
+Status:
+
+- Completed on 2026-03-07 after re-scoping `gen()` failure semantics.
 
 Objective:
 
-- Make `gen()`'s exported type match the values that `driveGen()` already
-  returns.
+- Keep `gen()` focused on explicit yielded and returned error values while
+  treating thrown or rejected failures as orchestration failures.
 
 Current code paths:
 
 - `src/lib/gen.ts`
+- `src/lib/__tests__/gen.test.ts`
+- `src/__tests__/index.test.ts`
 - `src/__tests__/types.test.ts`
 
 Implementation approach:
 
-- Update `GenResult` so non-control thrown/rejected failures are represented as
-  `UnhandledException`.
-- Keep the existing control-error behavior unchanged.
+- Revert the earlier plan to widen `GenResult` with `UnhandledException`; that
+  would force callers to narrow on an implementation-failure channel even when
+  their generator only models explicit domain errors.
+- Keep `GenResult` limited to success values plus explicit yielded or returned
+  `Error` values.
+- Change `driveGen()` and its async execution path so thrown exceptions and
+  rejected promises propagate unchanged instead of being wrapped or returned as
+  values.
+- Preserve the existing short-circuit behavior for explicit error values that
+  are yielded or returned, including yielded `UnhandledException` values from
+  nested `run()` or `runSync()` calls.
 
 Regression coverage:
 
-- Add type tests for sync and async `gen()` paths that currently produce
-  `UnhandledException`.
-- Only add new runtime tests if the existing `gen` runtime coverage does not
-  already exercise the relevant path.
+- Update type tests so plain `gen()` usage does not include
+  `UnhandledException` unless it is already present in a yielded runner result
+  union.
+- Rewrite direct `driveGen()` runtime tests so thrown and rejected failures
+  assert raw throw/reject behavior instead of `UnhandledException` wrapping.
+- Keep composed `gen()` coverage that yields `try$.run(...)` and
+  `try$.runSync(...)` results, proving those explicit yielded error values still
+  flow through the normal result union.
 
 Done when:
 
-- Public `GenResult` includes `UnhandledException` in both sync and async
-  variants where appropriate.
+- `GenResult` stays narrow for direct `gen()` success and explicit error-value
+  paths.
+- `driveGen()` throws or rejects unexpected failures unchanged.
+- Explicit yielded or returned error values still short-circuit as normal
+  results, including yielded `UnhandledException` values from nested runners.
 
 ### Step 7 - Stabilize and simplify shared executor tests
 
@@ -388,6 +410,7 @@ This follow-up is complete when:
 - `runSync()` rejects delayed or jittered retry policy shapes
 - `executeRun()` object-form typing matches runtime returns
 - async run paths rethrow `Panic` instead of returning it
-- `GenResult` includes `UnhandledException`
+- `gen()` throws or rejects unexpected failures unchanged while keeping
+  `GenResult` narrow for explicit error-value paths
 - `shared.test.ts` no longer depends on timing-based abort observation
 - Steps 8 and 9 are either explicitly deferred or deliberately completed

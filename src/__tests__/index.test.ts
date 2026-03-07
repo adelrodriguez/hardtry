@@ -289,6 +289,21 @@ describe("run", () => {
       expect(await result).toBeInstanceOf(UnhandledException)
     })
 
+    it("rethrows user-thrown Panic in function form", async () => {
+      const panic = new Panic("FLOW_NO_EXIT")
+      let thrown: unknown
+
+      try {
+        await try$.run(() => {
+          throw panic
+        })
+      } catch (error) {
+        thrown = error
+      }
+
+      expect(thrown).toBe(panic)
+    })
+
     it("returns UnhandledException when sync function form throws", async () => {
       const result = try$.run(() => {
         throw new Error("boom")
