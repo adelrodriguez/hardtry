@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import type { TryCtx } from "../../types/core"
-import { CancellationError, Panic, TimeoutError, UnhandledException } from "../../errors"
+import {
+  CancellationError,
+  Panic,
+  RetryExhaustedError,
+  TimeoutError,
+  UnhandledException,
+} from "../../errors"
 import { sleep } from "../../utils"
 import { executeRun } from "../run"
 
@@ -63,6 +69,39 @@ describe("executeRun", () => {
         expect(error).toBeInstanceOf(Panic)
         expect((error as Panic).code).toBe("RUN_CATCH_HANDLER_REJECT")
       }
+    })
+
+    it("returns RetryExhaustedError and skips catch when retries are exhausted", async () => {
+      let attempts = 0
+      let mapped = false
+      const cause = new Error("boom")
+
+      const result = (await executeRun(
+        {
+          retry: { backoff: "constant", delayMs: 0, limit: 2 },
+        },
+        {
+          catch: () => {
+            mapped = true
+            return "mapped"
+          },
+          try: async () => {
+            await Promise.resolve()
+            attempts += 1
+            throw cause
+          },
+        }
+      )) as unknown as object
+
+      expect(result).toBeInstanceOf(RetryExhaustedError)
+
+      if (!(result instanceof RetryExhaustedError)) {
+        expect.unreachable("should return RetryExhaustedError")
+      }
+
+      expect(result.cause).toBe(cause)
+      expect(attempts).toBe(2)
+      expect(mapped).toBe(false)
     })
   })
 
