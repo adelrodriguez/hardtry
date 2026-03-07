@@ -5,26 +5,53 @@ import type {
   UnhandledException,
 } from "./errors"
 import type {
-  AllOptions,
-  AllSettledResult,
   InferredTaskContext,
   TaskRecord,
   TaskResult,
   TaskValidation,
-} from "./types/all"
-import type { BuilderConfig, WrapFn } from "./types/builder"
-import type { TryCtxFor } from "./types/core"
-import type { FlowResult, InferredFlowTaskContext } from "./types/flow"
-import type { RetryOptions } from "./types/retry"
-import type { AsyncRunInput, RunTryFn } from "./types/run"
+  AllOptions,
+  AllSettledResult,
+  TryCtx,
+  TryCtxFor,
+} from "./executors/shared"
+import type { RetryOptions, RetryPolicy } from "./modifiers/retry"
 import { Panic } from "./errors"
 import { executeAll } from "./executors/all"
 import { executeAllSettled } from "./executors/all-settled"
-import { executeFlow } from "./executors/flow"
-import { executeRun } from "./executors/run"
+import { executeFlow, type FlowResult, type InferredFlowTaskContext } from "./executors/flow"
+import { executeRun, type AsyncRunInput, type RunTryFn } from "./executors/run"
 import { executeRunSync, type SyncRunInput, type SyncRunTryFn } from "./executors/run-sync"
 import { retryOptions } from "./modifiers/retry"
 import { invariant } from "./utils"
+
+/**
+ * Wraps are observational hooks: they can inspect execution context and
+ * surround execution, but they must not mutate context or replace it.
+ */
+export type WrapCtx = Readonly<Omit<TryCtx, "retry">> & {
+  readonly retry: Readonly<TryCtx["retry"]>
+}
+
+type WrapFn = (ctx: WrapCtx, next: () => unknown) => unknown
+
+export interface BuilderConfig {
+  /**
+   * Retry configuration applied to the run.
+   */
+  retry?: RetryPolicy
+  /**
+   * Timeout configuration applied to the run.
+   */
+  timeout?: number
+  /**
+   * Abort signals used to cancel execution.
+   */
+  signals?: AbortSignal[]
+  /**
+   * Wrapper middleware chain around execution.
+   */
+  wraps?: WrapFn[]
+}
 
 type ConfigRunErrors = RetryExhaustedError | TimeoutError | CancellationError
 type OrchestrationMethods = "all" | "allSettled" | "flow"

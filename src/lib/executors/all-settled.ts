@@ -1,10 +1,5 @@
-import type {
-  AllSettledResult,
-  InferredTaskContext,
-  TaskRecord,
-  TaskValidation,
-} from "../types/all"
-import type { BuilderConfig } from "../types/builder"
+import type { BuilderConfig } from "../builder"
+import type { AllSettledResult, InferredTaskContext, TaskRecord, TaskValidation } from "./shared"
 import { OrchestrationExecution, TaskExecution } from "./shared"
 
 class AllSettledExecution<T extends TaskRecord> extends OrchestrationExecution<

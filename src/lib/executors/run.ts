@@ -1,12 +1,26 @@
-import type { BuilderConfig } from "../types/builder"
-import type { BaseTryCtx } from "../types/core"
-import type { AsyncRunInput, RunCatchFn, RunTryFn } from "../types/run"
+import type { BuilderConfig } from "../builder"
+import type { BaseTryCtx, NonPromise } from "./shared"
 import { ControlError, Panic, RetryExhaustedError, UnhandledException } from "../errors"
 import { checkIsPromiseLike } from "../utils"
 import { BaseExecution, RetryDirective, type RetryDecision, type RunnerError } from "./base"
 
+export type RunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (
+  ctx: Ctx
+) => NonPromise<T> | Promise<T>
+
+type RunCatchFn<E> = (error: unknown) => NonPromise<E> | Promise<E>
+
+interface RunAsyncOptions<T, E, Ctx extends BaseTryCtx = BaseTryCtx> {
+  try: RunTryFn<T, Ctx>
+  catch: RunCatchFn<E>
+}
+
+export type AsyncRunInput<T, E, Ctx extends BaseTryCtx = BaseTryCtx> =
+  | RunTryFn<T, Ctx>
+  | RunAsyncOptions<T, E, Ctx>
+
 /** Encapsulates the shared mutable state and logic for a single run execution. */
-export class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
+class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
   Promise<T | E | RunnerError>
 > {
   #catchFn: RunCatchFn<E> | undefined

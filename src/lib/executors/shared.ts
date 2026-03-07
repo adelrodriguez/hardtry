@@ -1,12 +1,93 @@
-import type { ResultProxy, TaskContext, TaskRecord } from "../types/all"
-import type { BuilderConfig } from "../types/builder"
+import type { BuilderConfig } from "../builder"
 import { Panic, UnhandledException } from "../errors"
 import { invariant } from "../utils"
 import { BaseExecution } from "./base"
 
 type ResolverPair = [(value: unknown) => void, (reason?: unknown) => void]
 
-export type TaskExecutionMode = "fail-fast" | "settled"
+type TaskExecutionMode = "fail-fast" | "settled"
+
+// oxlint-disable-next-line no-explicit-any -- Required for task-map inference
+export type TaskRecord = Record<string, any>
+
+export type TaskValidation<T extends TaskRecord> = {
+  // oxlint-disable-next-line no-explicit-any -- Required for function compatibility with contextual `this`
+  [K in keyof T]: T[K] extends (...args: any[]) => any ? T[K] : never
+}
+
+// oxlint-disable-next-line no-explicit-any -- Required for function compatibility with contextual `this`
+export type TaskResult<T> = T extends (...args: any[]) => infer R ? Awaited<R> : never
+
+export type ResultProxy<T extends TaskRecord> = {
+  readonly [K in keyof T]: Promise<TaskResult<T[K]>>
+}
+
+export interface TaskContext<T extends TaskRecord> {
+  $result: ResultProxy<T>
+  $signal: AbortSignal
+  $disposer: AsyncDisposableStack
+}
+
+export type InferredTaskContext<T extends TaskRecord> = {
+  $result: {
+    readonly [K in keyof T]: ReturnType<T[K]> extends Promise<infer R>
+      ? Promise<R>
+      : Promise<ReturnType<T[K]>>
+  }
+  $signal: AbortSignal
+  $disposer: AsyncDisposableStack
+}
+
+export type AllValue<T extends TaskRecord> = {
+  [K in keyof T]: TaskResult<T[K]>
+}
+
+interface AllCatchContext<T extends TaskRecord> {
+  failedTask: (keyof T & string) | undefined
+  partial: Partial<AllValue<T>>
+  signal: AbortSignal
+}
+
+type AllCatchFn<T extends TaskRecord, C> = (
+  error: unknown,
+  ctx: AllCatchContext<T>
+) => C | Promise<C>
+
+export interface AllOptions<T extends TaskRecord, C> {
+  catch: AllCatchFn<T, C>
+}
+
+export interface SettledFulfilled<T> {
+  status: "fulfilled"
+  value: T
+}
+
+export interface SettledRejected {
+  status: "rejected"
+  reason: unknown
+}
+
+export type SettledResult<T> = SettledFulfilled<T> | SettledRejected
+
+export type AllSettledResult<T extends TaskRecord> = {
+  [K in keyof T]: SettledResult<TaskResult<T[K]>>
+}
+
+interface RetryInfo {
+  attempt: number
+  limit: number
+}
+
+export interface BaseTryCtx {
+  signal?: AbortSignal
+}
+
+export type TryCtxFor<HasRetry extends boolean> = BaseTryCtx &
+  (HasRetry extends true ? { retry: RetryInfo } : Record<never, never>)
+
+export type TryCtx = TryCtxFor<true>
+
+export type NonPromise<T> = T extends PromiseLike<unknown> ? never : T
 
 export abstract class OrchestrationExecution<TResult> extends BaseExecution<Promise<TResult>> {
   protected constructor(config: BuilderConfig) {
@@ -49,17 +130,20 @@ export abstract class TaskGraphExecutionBase<
 > {
   protected readonly tasks: T
   protected readonly taskNames: Array<keyof T & string>
-  protected readonly results = new Map<keyof T, unknown>()
-  protected readonly errors = new Map<keyof T, unknown>()
-  protected readonly resolvers = new Map<keyof T, ResolverPair[]>()
-  protected readonly internalController = new AbortController()
+  protected readonly results!: Map<keyof T, unknown>
+  protected readonly errors!: Map<keyof T, unknown>
+  protected readonly resolvers!: Map<keyof T, ResolverPair[]>
+  protected readonly internalController: AbortController = new AbortController()
   protected readonly taskSignal: AbortSignal
-  protected readonly disposer = new AsyncDisposableStack()
+  protected readonly disposer: AsyncDisposableStack = new AsyncDisposableStack()
   protected firstRejection: unknown
 
   constructor(signal: AbortSignal | undefined, tasks: T) {
     this.tasks = tasks
     this.taskNames = Object.keys(tasks) as Array<keyof T & string>
+    this.results = new Map<keyof T, unknown>()
+    this.errors = new Map<keyof T, unknown>()
+    this.resolvers = new Map<keyof T, ResolverPair[]>()
     this.taskSignal = signal
       ? AbortSignal.any([signal, this.internalController.signal])
       : this.internalController.signal

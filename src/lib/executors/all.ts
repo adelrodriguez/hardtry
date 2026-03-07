@@ -1,3 +1,4 @@
+import type { BuilderConfig } from "../builder"
 import type {
   AllOptions,
   AllValue,
@@ -5,8 +6,7 @@ import type {
   TaskRecord,
   TaskResult,
   TaskValidation,
-} from "../types/all"
-import type { BuilderConfig } from "../types/builder"
+} from "./shared"
 import { CancellationError, Panic } from "../errors"
 import { checkIsPromiseLike } from "../utils"
 import { OrchestrationExecution, TaskExecution } from "./shared"
