@@ -27,18 +27,18 @@ const result = await try$
   .timeout(5_000) // Enforce one total deadline across attempts
   .run({
     try: async () => {
-      const response = await fetch("https://example.com")
+      const order = await db.orders.findById("ord_123")
 
-      if (!response.ok) {
-        throw new Error(`request failed: ${response.status}`)
+      if (order === null) {
+        throw new Error("order not found")
       }
 
-      return "ok" as const
+      return order.status
     },
     catch: () => new RequestFailedError("request failed"),
   })
 
-// result is "ok" | RequestFailedError | RetryExhaustedError | TimeoutError
+// result is OrderStatus | RequestFailedError | RetryExhaustedError | TimeoutError
 ```
 
 <details>
@@ -62,6 +62,7 @@ const result = await try$
   - [dispose](#dispose)
 - [API Reference](#api-reference)
 - [Common Recipes](#common-recipes)
+- [Limitations](#limitations)
 - [When not to use tryharder](#when-not-to-use-tryharder)
 - [Contributing](#contributing)
 - [Acknowledgments](#acknowledgments)
@@ -84,15 +85,15 @@ async function loadUser(signal: AbortSignal) {
     const combined = AbortSignal.any([signal, timeout])
 
     try {
-      const response = await fetch("https://example.com/user", {
+      const user = await db.users.findById("user_123", {
         signal: combined,
       })
 
-      if (!response.ok) {
-        throw new Error(`request failed: ${response.status}`)
+      if (user === null) {
+        throw new Error("user not found")
       }
 
-      return await response.json()
+      return user
     } catch (error) {
       lastError = error
 
@@ -121,13 +122,13 @@ const result = await try$
   .signal(controller.signal)
   .run({
     try: async ({ signal }) => {
-      const response = await fetch("https://example.com/user", { signal })
+      const user = await db.users.findById("user_123", { signal })
 
-      if (!response.ok) {
-        throw new Error(`request failed: ${response.status}`)
+      if (user === null) {
+        throw new Error("user not found")
       }
 
-      return await response.json()
+      return user
     },
     catch: () => new UserUnavailableError("user service unavailable"),
   })
@@ -287,15 +288,15 @@ const result = await try$
   .timeout(1_500)
   .run({
     try: async () => {
-      const response = await fetch("https://example.com/data")
+      const account = await db.accounts.findById("acct_123")
 
-      if (!response.ok) {
-        throw new Error("upstream failed")
+      if (account === null) {
+        throw new Error("account missing")
       }
 
-      return await response.json()
+      return account
     },
-    catch: () => new UpstreamUnavailableError("data service unavailable"),
+    catch: () => new UpstreamUnavailableError("account store unavailable"),
   })
 ```
 
@@ -501,10 +502,13 @@ Use `dispose()` when cleanup should stay colocated with the workflow that alloca
 
 ```ts
 await using disposer = try$.dispose()
+const connection = await db.connect()
 
-disposer.defer(() => {
-  console.log("cleanup")
+disposer.defer(async () => {
+  await connection.close()
 })
+
+const user = await connection.users.findById("user_123")
 ```
 
 ## API Reference
@@ -567,13 +571,13 @@ class PaymentUnavailableError extends Error {}
 
 const result = await try$.run({
   try: async () => {
-    const response = await fetch("https://example.com/payments")
+    const payment = await db.payments.findById("pay_123")
 
-    if (!response.ok) {
-      throw new Error("payments upstream failed")
+    if (payment === null) {
+      throw new Error("payment missing")
     }
 
-    return await response.json()
+    return payment
   },
   catch: () => new PaymentUnavailableError("payments unavailable"),
 })
@@ -587,8 +591,13 @@ const result = await try$.run({
 const result = await try$.flow({
   async fetchUser() {
     const user = await try$.retry(2).run(async () => {
-      const response = await fetch("https://example.com/user")
-      return await response.json()
+      const row = await db.users.findById("user_123")
+
+      if (row === null) {
+        throw new Error("user missing")
+      }
+
+      return row
     })
 
     return this.$exit(user)
@@ -617,10 +626,10 @@ Use `allSettled(...)` when failure is data you want to inspect:
 ```ts
 const observed = await try$.allSettled({
   primary() {
-    return fetchPrimary()
+    return db.reports.readFromPrimary("daily-active-users")
   },
   replica() {
-    return fetchReplica()
+    return db.reports.readFromReplica("daily-active-users")
   },
 })
 ```
@@ -634,10 +643,10 @@ const controller = new AbortController()
 
 const result = await try$.signal(controller.signal).all({
   async a() {
-    return fetch("/a", { signal: this.$signal })
+    return db.users.findById("user_123", { signal: this.$signal })
   },
   async b() {
-    return fetch("/b", { signal: this.$signal })
+    return db.accounts.findById("acct_123", { signal: this.$signal })
   },
 })
 ```
@@ -662,6 +671,13 @@ const value = await try$.run({
   catch: () => new InvalidPayloadError("payload was invalid"),
 })
 ```
+
+## Limitations
+
+- `tryharder` currently assumes `DisposableStack` and `AsyncDisposableStack` are available at runtime because the executor layer uses them internally, not just when you call `dispose()` yourself.
+- This can break consumers on runtimes that do not yet provide those globals, notably Firefox and Safari.
+- The tracked fix is [#36 Bundle DisposableStack polyfill for runtimes without native support](https://github.com/adelrodriguez/tryharder/issues/36).
+- Until that issue is resolved, use `tryharder` on runtimes with native disposable-stack support or provide a compatible polyfill before loading the package.
 
 ## When not to use tryharder
 
