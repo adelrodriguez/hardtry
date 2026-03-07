@@ -11,7 +11,7 @@ describe("TaskExecution", () => {
         a() {
           return 1
         },
-        async b(this: { $result: { a: Promise<number> } }): Promise<number> {
+        async b(this: { $result: { a: Promise<number> } }) {
           const a = await this.$result.a
           return a + 1
         },
@@ -27,27 +27,43 @@ describe("TaskExecution", () => {
 
   it("records failedTask and aborts siblings in fail-fast mode", async () => {
     let signalAbortedInB = false
+    let resolveBReady!: () => void
+    const bReady = new Promise<void>((resolve) => {
+      resolveBReady = resolve
+    })
+    let resolveAbortObserved!: () => void
+    const abortObserved = new Promise<void>((resolve) => {
+      resolveAbortObserved = resolve
+    })
 
     await using execution = new TaskExecution(
       undefined,
       {
-        a() {
+        async a() {
+          await bReady
           throw new Error("boom")
         },
-        async b(this: { $signal: AbortSignal }): Promise<string> {
-          if (!this.$signal.aborted) {
-            await new Promise<void>((resolve) => {
-              this.$signal.addEventListener(
-                "abort",
-                () => {
-                  resolve()
-                },
-                { once: true }
-              )
-            })
+        async b(this: { $signal: AbortSignal }) {
+          if (this.$signal.aborted) {
+            resolveBReady()
+            signalAbortedInB = true
+            resolveAbortObserved()
+            return "never"
           }
 
+          await new Promise<void>((resolve) => {
+            this.$signal.addEventListener(
+              "abort",
+              () => {
+                resolve()
+              },
+              { once: true }
+            )
+            resolveBReady()
+          })
+
           signalAbortedInB = this.$signal.aborted
+          resolveAbortObserved()
           return "never"
         },
       },
@@ -61,7 +77,7 @@ describe("TaskExecution", () => {
       expect((error as Error).message).toBe("boom")
     }
 
-    await sleep(5)
+    await abortObserved
     expect(execution.failedTask).toBe("a")
     expect(signalAbortedInB).toBe(true)
   })
@@ -76,7 +92,7 @@ describe("TaskExecution", () => {
         a() {
           throw error
         },
-        async b(this: { $signal: AbortSignal }): Promise<number> {
+        async b(this: { $signal: AbortSignal }) {
           await sleep(5)
           signalAbortedInB = this.$signal.aborted
           return 2
@@ -100,7 +116,7 @@ describe("TaskExecution", () => {
     await using execution = new TaskExecution(
       undefined,
       {
-        async a(this: { $result: Record<string, Promise<unknown>> }): Promise<unknown> {
+        async a(this: { $result: Record<string, Promise<unknown>> }) {
           return await this.$result.missing
         },
       },
