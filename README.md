@@ -299,7 +299,8 @@ import { Panic, TimeoutError, UnhandledException } from "hardtry/errors"
 - `flow` requires at least one `$exit(...)` path; otherwise it throws.
 - Control outcomes have precedence over mapped catch results in racing scenarios.
 - `wrap` is only available from `try$.wrap(...)` and can be chained as `.wrap().wrap()`.
-- Programmer-error paths throw `Panic`, not a returned error value.
+- Control outcomes are `CancellationError` and `TimeoutError`.
+- Programmer-error paths throw `Panic`; `run()` and `runSync()` never return it as a result value.
 - `Panic` exposes a `code` for machine-readable diagnostics.
 
 ### Panic codes

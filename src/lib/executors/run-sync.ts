@@ -1,8 +1,14 @@
 import type { BuilderConfig } from "../types/builder"
 import type { BaseTryCtx, NonPromise } from "../types/core"
 import type { RunnerError } from "./base"
-import { Panic, RetryExhaustedError, UnhandledException, type PanicCode } from "../errors"
-import { checkIsControlError, checkIsPromiseLike, invariant } from "../utils"
+import {
+  ControlError,
+  Panic,
+  RetryExhaustedError,
+  UnhandledException,
+  type PanicCode,
+} from "../errors"
+import { checkIsPromiseLike, invariant } from "../utils"
 import { BaseExecution, RetryDirective } from "./base"
 
 export type SyncRunTryFn<T, Ctx extends BaseTryCtx = BaseTryCtx> = (ctx: Ctx) => NonPromise<T>
@@ -60,7 +66,7 @@ class RunSyncExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<T | E
       throw error
     }
 
-    if (checkIsControlError(error)) {
+    if (error instanceof ControlError) {
       return error
     }
 

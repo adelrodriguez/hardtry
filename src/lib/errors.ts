@@ -39,14 +39,17 @@ export const PanicMessages = {
 } as const satisfies Record<PanicCode, string>
 export type PanicMessages = typeof PanicMessages
 
-export class CancellationError extends Error {
+/** @internal */
+export class ControlError extends Error {}
+
+export class CancellationError extends ControlError {
   constructor(message = "Execution was cancelled", options?: ErrorOptions) {
     super(message, options)
     this.name = "CancellationError"
   }
 }
 
-export class TimeoutError extends Error {
+export class TimeoutError extends ControlError {
   constructor(message = "Execution timed out", options?: ErrorOptions) {
     super(message, options)
     this.name = "TimeoutError"

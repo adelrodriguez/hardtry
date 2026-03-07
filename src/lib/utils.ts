@@ -1,4 +1,4 @@
-import { CancellationError, Panic, TimeoutError, type PanicCode } from "./errors"
+import { Panic, type PanicCode } from "./errors"
 
 export function assertUnreachable(value: never, code: PanicCode): never {
   throw new Panic(code, { message: `Unreachable case: ${String(value)}` })
@@ -18,14 +18,6 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
-}
-
-export function checkIsControlError(
-  error: unknown
-): error is CancellationError | Panic | TimeoutError {
-  return (
-    error instanceof CancellationError || error instanceof Panic || error instanceof TimeoutError
-  )
 }
 
 export function checkIsPromiseLike(value: unknown): value is PromiseLike<unknown> {

@@ -1,43 +1,6 @@
 import { describe, expect, it } from "bun:test"
-import {
-  CancellationError,
-  Panic,
-  RetryExhaustedError,
-  TimeoutError,
-  UnhandledException,
-} from "../errors"
-import { assertUnreachable, checkIsControlError, checkIsPromiseLike, invariant } from "../utils"
-
-describe("checkIsControlError", () => {
-  it("returns true for CancellationError", () => {
-    expect(checkIsControlError(new CancellationError())).toBe(true)
-  })
-
-  it("returns true for Panic", () => {
-    expect(checkIsControlError(new Panic("RUN_CATCH_HANDLER_THROW"))).toBe(true)
-  })
-
-  it("returns true for TimeoutError", () => {
-    expect(checkIsControlError(new TimeoutError())).toBe(true)
-  })
-
-  it("returns false for RetryExhaustedError", () => {
-    expect(checkIsControlError(new RetryExhaustedError())).toBe(false)
-  })
-
-  it("returns false for UnhandledException", () => {
-    expect(checkIsControlError(new UnhandledException())).toBe(false)
-  })
-
-  it("returns false for plain Error", () => {
-    expect(checkIsControlError(new Error("boom"))).toBe(false)
-  })
-
-  it("returns false for non-error values", () => {
-    expect(checkIsControlError("string")).toBe(false)
-    expect(checkIsControlError(null)).toBe(false)
-  })
-})
+import { Panic } from "../errors"
+import { assertUnreachable, checkIsPromiseLike, invariant } from "../utils"
 
 describe("checkIsPromiseLike", () => {
   it("returns true for native Promise", () => {

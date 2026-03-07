@@ -29,6 +29,44 @@ describe("executeRun", () => {
 
       expect(await result).toBeInstanceOf(UnhandledException)
     })
+
+    it("rethrows user-thrown Panic from function form", async () => {
+      const panic = new Panic("FLOW_NO_EXIT")
+      const result = executeRun({}, async () => {
+        await Promise.resolve()
+        throw panic
+      })
+
+      try {
+        await result
+        expect.unreachable("should have thrown")
+      } catch (error) {
+        expect(error).toBe(panic)
+      }
+    })
+
+    it("does not retry Panic from function form", async () => {
+      const panic = new Panic("FLOW_NO_EXIT")
+      let attempts = 0
+      const result = executeRun(
+        {
+          retry: { backoff: "constant", delayMs: 0, limit: 3 },
+        },
+        () => {
+          attempts += 1
+          throw panic
+        }
+      )
+
+      try {
+        await result
+        expect.unreachable("should have thrown")
+      } catch (error) {
+        expect(error).toBe(panic)
+      }
+
+      expect(attempts).toBe(1)
+    })
   })
 
   describe("object form", () => {
