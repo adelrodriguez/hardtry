@@ -1,10 +1,14 @@
 import { describe, expect, it } from "bun:test"
-import { dispose } from "../dispose"
+import * as try$ from "../index"
 
 describe("dispose", () => {
+  it("is exposed from the root namespace", () => {
+    expect(typeof try$.dispose).toBe("function")
+  })
+
   it("disposes registered cleanups in reverse order", async () => {
     const calls: string[] = []
-    const disposer = dispose()
+    const disposer = try$.dispose()
 
     disposer.defer(() => {
       calls.push("defer:first")
@@ -28,7 +32,7 @@ describe("dispose", () => {
 
   it("continues cleanup when one deferred cleanup throws", async () => {
     const calls: string[] = []
-    const disposer = dispose()
+    const disposer = try$.dispose()
 
     disposer.defer(() => {
       calls.push("first")
@@ -45,9 +49,10 @@ describe("dispose", () => {
 
     try {
       await disposer[Symbol.asyncDispose]()
-      throw new Error("Expected cleanup to throw")
+      expect.unreachable("should have thrown")
     } catch (error) {
       expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toBe("cleanup failed")
     }
 
     expect(calls).toEqual(["third", "second", "first"])

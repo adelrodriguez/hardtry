@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test"
-import { CancellationError, Panic, TimeoutError } from "../errors"
-import { driveGen } from "../gen"
+import { CancellationError, Panic, TimeoutError, UnhandledException } from "../errors"
+import * as try$ from "../index"
 
 class UserNotFound extends Error {}
 class ProjectNotFound extends Error {}
 
-describe("driveGen", () => {
+describe("gen", () => {
   it("returns sync success value when all yielded values are sync", () => {
-    const result = driveGen(function* (use) {
+    const result = try$.gen(function* (use) {
       const a = yield* use(20)
       const b = yield* use(22)
       return a + b
@@ -21,7 +21,7 @@ describe("driveGen", () => {
 
     const maybeUser = new UserNotFound("missing") as number | UserNotFound
 
-    const result = driveGen(function* (use) {
+    const result = try$.gen(function* (use) {
       const user = yield* use(maybeUser)
       void user
       didRunAfterError = true
@@ -33,8 +33,9 @@ describe("driveGen", () => {
   })
 
   it("awaits yielded promises and returns async success", async () => {
-    const result = await driveGen(function* (use) {
+    const result = await try$.gen(function* (use) {
       const a = yield* use(Promise.resolve(20))
+
       if (a > 20) {
         return new Error("boom")
       }
@@ -51,7 +52,7 @@ describe("driveGen", () => {
 
     const maybeProject = Promise.resolve(new ProjectNotFound("missing") as number | ProjectNotFound)
 
-    const result = await driveGen(function* (use) {
+    const result = await try$.gen(function* (use) {
       const project = yield* use(maybeProject)
       void project
       didRunAfterError = true
@@ -64,7 +65,7 @@ describe("driveGen", () => {
 
   it("rejects with the original reason when a yielded promise rejects", async () => {
     try {
-      await driveGen(function* (use) {
+      await try$.gen(function* (use) {
         const value = yield* use(Promise.reject<unknown>(new Error("boom")))
         return value
       })
@@ -79,7 +80,7 @@ describe("driveGen", () => {
     const timeout = new TimeoutError("timed out")
 
     try {
-      await driveGen(function* (use) {
+      await try$.gen(function* (use) {
         const value = yield* use(Promise.reject<unknown>(timeout))
         return value
       })
@@ -93,7 +94,7 @@ describe("driveGen", () => {
     let finalized = false
 
     try {
-      await driveGen(function* (use) {
+      await try$.gen(function* (use) {
         try {
           yield* use(Promise.reject<unknown>(new Error("boom")))
         } finally {
@@ -110,7 +111,7 @@ describe("driveGen", () => {
   })
 
   it("lets the generator catch a rejected yielded promise and recover", async () => {
-    const result = await driveGen(function* (use) {
+    const result = await try$.gen(function* (use) {
       try {
         yield* use(Promise.reject<unknown>(new Error("boom")))
       } catch (error) {
@@ -127,7 +128,7 @@ describe("driveGen", () => {
 
   it("throws the original error when factory throws", () => {
     try {
-      driveGen(() => {
+      try$.gen(() => {
         throw new Error("factory failed")
       })
       expect.unreachable("should have thrown")
@@ -141,7 +142,7 @@ describe("driveGen", () => {
     const panic = new Panic("FLOW_NO_EXIT")
 
     try {
-      driveGen(() => {
+      try$.gen(() => {
         throw panic
       })
       expect.unreachable("should have thrown")
@@ -152,7 +153,7 @@ describe("driveGen", () => {
 
   it("throws the original error when generator body throws after yield", () => {
     try {
-      driveGen(function* (use) {
+      try$.gen(function* (use) {
         void (yield* use(1))
         throw new Error("generator failed")
       })
@@ -167,7 +168,7 @@ describe("driveGen", () => {
     const panic = new Panic("FLOW_NO_EXIT")
 
     try {
-      driveGen<number, number | Panic>(function* (use) {
+      try$.gen<number, number | Panic>(function* (use) {
         void (yield* use(1))
         throw panic
       })
@@ -178,7 +179,7 @@ describe("driveGen", () => {
   })
 
   it("returns explicit error values without throwing", () => {
-    const result = driveGen(function* (use) {
+    const result = try$.gen(function* (use) {
       void (yield* use(1))
       return new ProjectNotFound("from return")
     })
@@ -188,7 +189,7 @@ describe("driveGen", () => {
   })
 
   it("returns explicit async error values without throwing", async () => {
-    const result = driveGen(function* (use) {
+    const result = try$.gen(function* (use) {
       const value = yield* use(Promise.resolve(1))
       void value
       return Promise.resolve(new ProjectNotFound("async return"))
@@ -202,7 +203,7 @@ describe("driveGen", () => {
 
   it("throws raw non-Error values without wrapping", () => {
     try {
-      driveGen(() => {
+      try$.gen(() => {
         throw "string error"
       })
       expect.unreachable("should have thrown")
@@ -213,7 +214,7 @@ describe("driveGen", () => {
 
   it("rejects with the original error when the generator throws after entering async path", async () => {
     try {
-      await driveGen(function* (use) {
+      await try$.gen(function* (use) {
         void (yield* use(Promise.resolve(1)))
         throw new Error("async throw")
       })
@@ -228,7 +229,7 @@ describe("driveGen", () => {
     const cancellation = new CancellationError("cancelled")
 
     try {
-      await driveGen<Promise<number>, Promise<number | CancellationError>>(function* (use) {
+      await try$.gen<Promise<number>, Promise<number | CancellationError>>(function* (use) {
         void (yield* use(Promise.resolve(1)))
         throw cancellation
       })
@@ -240,7 +241,7 @@ describe("driveGen", () => {
 
   it("rejects with the original error when the final returned promise rejects", async () => {
     try {
-      await driveGen(function* (use) {
+      await try$.gen(function* (use) {
         void (yield* use(Promise.resolve(1)))
         return Promise.reject(new Error("final reject"))
       })
@@ -255,7 +256,7 @@ describe("driveGen", () => {
     const timeout = new TimeoutError("timed out")
 
     try {
-      await driveGen<Promise<number>, Promise<number | TimeoutError>>(function* (use) {
+      await try$.gen<Promise<number>, Promise<number | TimeoutError>>(function* (use) {
         void (yield* use(Promise.resolve(1)))
         return Promise.reject(timeout)
       })
@@ -267,7 +268,7 @@ describe("driveGen", () => {
 
   it("rejects with the original reason when a later async yield rejects", async () => {
     try {
-      await driveGen(function* (use) {
+      await try$.gen(function* (use) {
         void (yield* use(Promise.resolve(1)))
         const value = yield* use(Promise.reject<unknown>(new Error("second reject")))
         return value
@@ -283,7 +284,7 @@ describe("driveGen", () => {
     let finalized = false
 
     try {
-      await driveGen(function* (use) {
+      await try$.gen(function* (use) {
         void (yield* use(Promise.resolve(1)))
 
         try {
@@ -302,7 +303,7 @@ describe("driveGen", () => {
   })
 
   it("handles sync yield after entering async path", async () => {
-    const result = await driveGen(function* (use) {
+    const result = await try$.gen(function* (use) {
       const a = yield* use(Promise.resolve(10))
       const b = yield* use(32 as number)
       return a + b
@@ -314,7 +315,7 @@ describe("driveGen", () => {
   it("short-circuits on sync Error yielded after entering async path", async () => {
     let didRunAfterError = false
 
-    const result = await driveGen(function* (use) {
+    const result = await try$.gen(function* (use) {
       void (yield* use(Promise.resolve(1)))
       const value = yield* use(new UserNotFound("sync error in async") as number | UserNotFound)
       void value
@@ -327,7 +328,7 @@ describe("driveGen", () => {
   })
 
   it("resolves sync yields with a promise return value", async () => {
-    const result = driveGen(function* (use) {
+    const result = try$.gen(function* (use) {
       const a = yield* use(20)
       const b = yield* use(22)
       return Promise.resolve(a + b)
@@ -335,5 +336,98 @@ describe("driveGen", () => {
 
     expect(result).toBeInstanceOf(Promise)
     expect(await result).toBe(42)
+  })
+})
+
+describe("gen composition", () => {
+  class PermissionDenied extends Error {}
+  class UserNotFoundInFlow extends Error {}
+  class ProjectNotFoundInFlow extends Error {}
+
+  it("short-circuits with error from try$.runSync inside gen", () => {
+    const result = try$.gen(function* (use) {
+      const value = yield* use(
+        try$.runSync((): number => {
+          throw new Error("boom")
+        })
+      )
+
+      return value
+    })
+
+    expect(result).toBeInstanceOf(UnhandledException)
+  })
+
+  it("short-circuits with error from try$.run inside gen", async () => {
+    const result = await try$.gen(function* (use) {
+      const value = yield* use(
+        try$.run(async (): Promise<number> => {
+          await Promise.resolve()
+          throw new Error("boom")
+        })
+      )
+
+      return value
+    })
+
+    expect(result).toBeInstanceOf(UnhandledException)
+  })
+
+  it("composes multiple try$ calls and returns success or mapped errors", async () => {
+    const runFlow = (mode: "ok" | "permission-denied" | "project-not-found" | "user-not-found") => {
+      const getUser = () =>
+        try$.run({
+          catch: (error): PermissionDenied | UserNotFoundInFlow => {
+            if (error instanceof TypeError) {
+              return new PermissionDenied("denied")
+            }
+
+            return new UserNotFoundInFlow("missing user")
+          },
+          try: async () => {
+            await Promise.resolve()
+
+            if (mode === "permission-denied") {
+              throw new TypeError("denied")
+            }
+
+            if (mode === "user-not-found") {
+              throw new Error("missing")
+            }
+
+            return { id: "u_1" }
+          },
+        })
+
+      const getProject = (userId: string) =>
+        try$.run({
+          catch: (): ProjectNotFoundInFlow => new ProjectNotFoundInFlow("missing project"),
+          try: async () => {
+            await Promise.resolve()
+
+            if (mode === "project-not-found") {
+              throw new Error("missing")
+            }
+
+            return { id: `p_${userId}` }
+          },
+        })
+
+      return try$.gen(function* (use) {
+        const user = yield* use(getUser())
+        const project = yield* use(getProject(user.id))
+        return `${user.id}:${project.id}`
+      })
+    }
+
+    const ok = await runFlow("ok")
+    const userNotFound = await runFlow("user-not-found")
+    const permissionDenied = await runFlow("permission-denied")
+    const projectNotFound = await runFlow("project-not-found")
+
+    expect(ok).toBe("u_1:p_u_1")
+    expect(userNotFound).toBeInstanceOf(UserNotFoundInFlow)
+    expect(permissionDenied).toBeInstanceOf(PermissionDenied)
+    expect(projectNotFound).toBeInstanceOf(ProjectNotFoundInFlow)
   })
 })

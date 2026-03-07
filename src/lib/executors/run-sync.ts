@@ -1,6 +1,6 @@
-import type { BuilderConfig } from "../types/builder"
-import type { BaseTryCtx, NonPromise } from "../types/core"
+import type { BuilderConfig } from "../builder"
 import type { RunnerError } from "./base"
+import type { BaseTryCtx, NonPromise } from "./shared"
 import {
   ControlError,
   Panic,
@@ -22,16 +22,6 @@ export interface SyncRunOptions<T, E, Ctx extends BaseTryCtx = BaseTryCtx> {
 export type SyncRunInput<T, E, Ctx extends BaseTryCtx = BaseTryCtx> =
   | SyncRunTryFn<T, Ctx>
   | SyncRunOptions<T, E, Ctx>
-
-export type RunSyncTryFn<T> = () => NonPromise<T>
-export type RunSyncCatchFn<E> = (error: unknown) => NonPromise<E>
-
-export interface RunSyncOptions<T, E> {
-  try: RunSyncTryFn<T>
-  catch: RunSyncCatchFn<E>
-}
-
-export type RunSyncInput<T, E> = RunSyncTryFn<T> | RunSyncOptions<T, E>
 
 function assertNotPromiseLike(value: unknown, code: PanicCode, message?: string): void {
   invariant(
@@ -182,38 +172,4 @@ export function executeRunSync<T, E, Ctx extends BaseTryCtx>(
 
   using execution = new RunSyncExecution<T, E, Ctx>(config, input)
   return execution.execute()
-}
-
-export function runSync<T>(tryFn: RunSyncTryFn<T>): T | UnhandledException
-export function runSync<T, E>(options: RunSyncOptions<T, E>): T | E
-export function runSync<T, E>(input: RunSyncInput<T, E>): T | E | UnhandledException {
-  const tryFn: RunSyncTryFn<T> = typeof input === "function" ? input : input.try
-  const catchFn: RunSyncCatchFn<E> | undefined =
-    typeof input === "function" ? undefined : input.catch
-
-  try {
-    const result = tryFn()
-    assertNotPromiseLike(result, "RUN_SYNC_TRY_PROMISE")
-    return result
-  } catch (error) {
-    if (error instanceof Panic) {
-      throw error
-    }
-
-    if (!catchFn) {
-      return new UnhandledException(undefined, { cause: error })
-    }
-
-    try {
-      const mapped = catchFn(error)
-      assertNotPromiseLike(mapped, "RUN_SYNC_CATCH_PROMISE")
-      return mapped
-    } catch (catchError) {
-      if (catchError instanceof Panic && catchError.code === "RUN_SYNC_CATCH_PROMISE") {
-        throw catchError
-      }
-
-      throw new Panic("RUN_SYNC_CATCH_HANDLER_THROW", { cause: catchError })
-    }
-  }
 }

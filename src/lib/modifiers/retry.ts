@@ -1,8 +1,78 @@
-import type { BuilderConfig } from "../types/builder"
-import type { TryCtx } from "../types/core"
-import type { RetryOptions, RetryPolicy } from "../types/retry"
+import type { BuilderConfig } from "../builder"
+import type { TryCtx } from "../executors/shared"
 import { Panic } from "../errors"
 import { assertUnreachable, invariant } from "../utils"
+
+interface BaseRetryPolicy {
+  /**
+   * Maximum number of attempts, including the first run.
+   */
+  limit: number
+  /**
+   * Delay in milliseconds between attempts. Defaults to 0.
+   */
+  delayMs?: number
+  /**
+   * Adds random jitter to delays when enabled.
+   */
+  jitter?: boolean
+  /**
+   * Return true to retry after an error, false to stop.
+   */
+  shouldRetry?: (error: unknown, ctx: TryCtx) => boolean
+}
+
+interface LinearBackoffRetryPolicy extends BaseRetryPolicy {
+  /**
+   * Use linearly increasing delay between attempts.
+   */
+  backoff: "linear"
+  /**
+   * Not supported for linear backoff.
+   */
+  maxDelayMs?: never
+}
+
+interface ExponentialBackoffRetryPolicy extends BaseRetryPolicy {
+  /**
+   * Use exponential delay growth between attempts.
+   */
+  backoff: "exponential"
+  /**
+   * Optional cap for exponential delay in milliseconds.
+   */
+  maxDelayMs?: number
+}
+
+/**
+ * Retry policy using a constant delay strategy.
+ */
+interface ConstantBackoffRetryPolicy extends BaseRetryPolicy {
+  /**
+   * Required discriminant: use a fixed delay between attempts.
+   */
+  backoff: "constant"
+  /**
+   * Not supported for constant backoff.
+   */
+  maxDelayMs?: never
+}
+
+/**
+ * Retry configuration object.
+ */
+export type RetryPolicy =
+  | LinearBackoffRetryPolicy
+  | ExponentialBackoffRetryPolicy
+  | ConstantBackoffRetryPolicy
+
+/**
+ * Retry shorthand or full retry configuration.
+ *
+ * - `number`: attempt limit
+ * - `RetryPolicy`: detailed retry settings
+ */
+export type RetryOptions = number | RetryPolicy
 
 export function retryOptions(policy: RetryOptions): RetryPolicy {
   const limit = typeof policy === "number" ? policy : policy.limit

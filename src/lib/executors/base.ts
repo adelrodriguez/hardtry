@@ -1,6 +1,6 @@
+import type { BuilderConfig, WrapCtx } from "../builder"
 import type { RetryExhaustedError, UnhandledException } from "../errors"
-import type { BuilderConfig, WrapCtx } from "../types/builder"
-import type { TryCtx } from "../types/core"
+import type { TryCtx } from "./shared"
 import { CancellationError, TimeoutError } from "../errors"
 import {
   calculateRetryDelay,
