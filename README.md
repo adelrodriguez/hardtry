@@ -681,13 +681,11 @@ const value = await try$.run({
 })
 ```
 
-## When not to use tryharder
+## When not to use
 
-- **Small scripts or one-off tasks** - Plain `try/catch` is often simpler when you do not need retries, cancellation, or orchestration.
-- **You already use an effect system or result abstraction** - If your codebase already has a consistent execution model, adding `tryharder` may be redundant.
-- **Your workflows are mostly straightforward Promise chains** - `all(...)` and `flow(...)` help when coordination matters; otherwise native composition may be clearer.
-- **Your team prefers explicit `Result` values everywhere** - `tryharder` centers execution wrappers, not a dedicated result data type.
-- **You do not want policy-driven execution behavior** - If retry and timeout semantics are unnecessary overhead, the abstraction may not pay for itself.
+When you can use [`Effect`](https://github.com/Effect-TS/effect) in your codebase.
+
+Seriously, Effect is a much more powerful and complete solution.
 
 ## Contributing
 
