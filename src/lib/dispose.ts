@@ -1,3 +1,5 @@
-export function dispose(): AsyncDisposableStack {
-  return new AsyncDisposableStack()
+import { createAsyncDisposer, type AsyncDisposer } from "../shims/disposer"
+
+export function dispose(): AsyncDisposer {
+  return createAsyncDisposer()
 }

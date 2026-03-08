@@ -1,8 +1,10 @@
+import { defineDisposeAlias } from "../../shims/disposer"
 import { CancellationError, TimeoutError } from "../errors"
 import { resolveWithAbort } from "../utils"
 
 export class SignalController {
   readonly signal?: AbortSignal
+  declare [Symbol.dispose]: () => void
 
   constructor(signals: readonly AbortSignal[] = []) {
     if (signals.length > 0) {
@@ -40,7 +42,8 @@ export class SignalController {
     )
   }
 
-  [Symbol.dispose](): void {
+  dispose(): void {
     void this.signal
   }
 }
+defineDisposeAlias(SignalController.prototype)

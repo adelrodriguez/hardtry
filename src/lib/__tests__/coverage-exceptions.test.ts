@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { BuilderConfig } from "../builder"
 import { Panic } from "../../errors"
+import { createAsyncDisposer } from "../../shims/disposer"
 import { BaseExecution } from "../executors/base"
 import { TaskGraphExecutionBase, type ResultProxy, type TaskContext } from "../executors/shared"
 import { calculateRetryDelay, retryOptions } from "../modifiers/retry"
@@ -32,7 +33,7 @@ class TestExecution extends BaseExecution<number> {
   }
 
   static wrapContext() {
-    return this.createWrapContext(this.createContext({}, undefined))
+    return TestExecution.createWrapContext(TestExecution.createContext({}, undefined))
   }
 }
 
@@ -46,7 +47,7 @@ class SharedDefaultExecution extends TaskGraphExecutionBase<EmptyTasks, TaskCont
   protected override createTaskContext() {
     void this.taskNames
     return {
-      $disposer: new AsyncDisposableStack(),
+      $disposer: createAsyncDisposer(),
       $result: {} as ResultProxy<EmptyTasks>,
       $signal: new AbortController().signal,
     }

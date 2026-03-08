@@ -1,6 +1,7 @@
 import type { BuilderConfig, WrapCtx } from "../builder"
 import type { RetryExhaustedError, UnhandledException } from "../errors"
 import type { TryCtx } from "./shared"
+import { defineDisposeAlias, InternalDisposableStack } from "../../shims/disposer"
 import { CancellationError, TimeoutError } from "../errors"
 import {
   calculateRetryDelay,
@@ -35,13 +36,14 @@ export class RetryDirective {
   }
 }
 
-export abstract class BaseExecution<TResult = unknown> {
+export abstract class BaseExecution<TResult = unknown> implements Disposable {
   protected readonly config: BuilderConfig
   protected readonly ctx: TryCtx
   protected readonly executionSignal: AbortSignal | undefined
   #wrapCtxCache: WrapCtx | undefined
   readonly #signalController: SignalController | undefined
   readonly #timeoutController: TimeoutController | undefined
+  declare [Symbol.dispose]: () => void
 
   protected constructor(config: BuilderConfig, options: BaseExecutionOptions = {}) {
     this.config = config
@@ -75,18 +77,23 @@ export abstract class BaseExecution<TResult = unknown> {
 
   protected abstract executeCore(): TResult
 
-  [Symbol.dispose](): void {
+  dispose(): void {
     if (!this.#timeoutController && !this.#signalController) {
       return
     }
 
-    using disposer = new DisposableStack()
-    if (this.#timeoutController) {
-      disposer.use(this.#timeoutController)
-    }
+    const disposer = new InternalDisposableStack()
 
-    if (this.#signalController) {
-      disposer.use(this.#signalController)
+    try {
+      if (this.#timeoutController) {
+        disposer.use(this.#timeoutController)
+      }
+
+      if (this.#signalController) {
+        disposer.use(this.#signalController)
+      }
+    } finally {
+      disposer.dispose()
     }
   }
 
@@ -257,3 +264,4 @@ export abstract class BaseExecution<TResult = unknown> {
     return this.#wrapCtxCache
   }
 }
+defineDisposeAlias(BaseExecution.prototype)

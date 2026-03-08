@@ -1,3 +1,4 @@
+import { defineDisposeAlias } from "../../shims/disposer"
 import { Panic, TimeoutError } from "../errors"
 import { invariant, resolveWithAbort } from "../utils"
 
@@ -7,6 +8,7 @@ export class TimeoutController {
   readonly #startedAt = Date.now()
   readonly #timeoutMs: number
   #timeoutId: ReturnType<typeof setTimeout> | undefined
+  declare [Symbol.dispose]: () => void
 
   constructor(timeoutMs?: number) {
     this.#timeoutMs = timeoutMs ?? -1
@@ -97,9 +99,10 @@ export class TimeoutController {
     )
   }
 
-  [Symbol.dispose](): void {
+  dispose(): void {
     if (this.#timeoutId !== undefined) {
       clearTimeout(this.#timeoutId)
     }
   }
 }
+defineDisposeAlias(TimeoutController.prototype)

@@ -1,4 +1,5 @@
 import { group, summary } from "mitata"
+import type { AsyncDisposer } from "../../src/types"
 import { consume, registerAsyncBenchmark, try$ } from "../shared"
 
 const signal = new AbortController().signal
@@ -22,11 +23,11 @@ const dependencyTasks = {
 }
 
 const disposerTasks = {
-  a(this: { $disposer: AsyncDisposableStack }) {
+  a(this: { $disposer: AsyncDisposer }) {
     this.$disposer.defer(() => void 0)
     return 1
   },
-  b(this: { $disposer: AsyncDisposableStack }) {
+  b(this: { $disposer: AsyncDisposer }) {
     this.$disposer.defer(() => void 0)
     return 2
   },
@@ -42,11 +43,11 @@ const settledTasks = {
 }
 
 const settledDisposerTasks = {
-  a(this: { $disposer: AsyncDisposableStack }) {
+  a(this: { $disposer: AsyncDisposer }) {
     this.$disposer.defer(() => void 0)
     return 1
   },
-  b(this: { $disposer: AsyncDisposableStack }) {
+  b(this: { $disposer: AsyncDisposer }) {
     this.$disposer.defer(() => void 0)
     return 2
   },
