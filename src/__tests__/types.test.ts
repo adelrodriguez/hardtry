@@ -39,6 +39,29 @@ describe("type inference", () => {
       type _assert = Expect<Equal<typeof disposer, AsyncDisposer>>
     })
 
+    it("dispose exposes cleanup alias", () => {
+      const disposer = try$.dispose()
+      const cleanupResult = disposer.cleanup()
+      type _assert = Expect<Equal<typeof cleanupResult, Promise<void>>>
+    })
+
+    it("dispose exposes add alias", () => {
+      const disposer = try$.dispose()
+      type _assert = Expect<Equal<ReturnType<typeof disposer.add>, void>>
+    })
+
+    it("dispose add/defer reject non-callables at the type level", () => {
+      if (typecheckOnly()) {
+        const disposer = try$.dispose()
+
+        // @ts-expect-error -- add() only accepts cleanup callbacks
+        disposer.add(123)
+
+        // @ts-expect-error -- defer() only accepts cleanup callbacks
+        disposer.defer(123)
+      }
+    })
+
     it("ctx.retry is not available without retry config", () => {
       if (typecheckOnly()) {
         void try$.run((ctx) => {
@@ -64,7 +87,7 @@ describe("type inference", () => {
         })
 
         void try$
-          .wrap((ctx, next) => next())
+          .wrap((_, next) => next())
           .run((ctx) => {
             // @ts-expect-error -- retry metadata is only available after retry()
             void ctx.retry.attempt
@@ -223,7 +246,7 @@ describe("type inference", () => {
     })
 
     it("wrap() preserves runSync() availability", () => {
-      const wrappedBuilder = try$.wrap((ctx, next) => next())
+      const wrappedBuilder = try$.wrap((_, next) => next())
       const syncResult = wrappedBuilder.runSync(() => 1)
 
       type _assertSync = Expect<Equal<typeof syncResult, number | UnhandledException>>
@@ -380,12 +403,12 @@ describe("type inference", () => {
 
   describe("builder chaining", () => {
     it("wrap builder exposes runSync", () => {
-      const result = try$.wrap((ctx, next) => next()).runSync(() => 42)
+      const result = try$.wrap((_, next) => next()).runSync(() => 42)
       type _assert = Expect<Equal<typeof result, number | UnhandledException>>
     })
 
     it("wrap builder still exposes run", () => {
-      const result = try$.wrap((ctx, next) => next()).run(() => 42)
+      const result = try$.wrap((_, next) => next()).run(() => 42)
       type _assert = Expect<Equal<typeof result, Promise<number | UnhandledException>>>
     })
 
@@ -393,7 +416,7 @@ describe("type inference", () => {
       if (typecheckOnly()) return
 
       const result = try$
-        .wrap((ctx, next) => next())
+        .wrap((_, next) => next())
         .retry(3)
         .run((ctx) => ctx.retry.attempt)
 
@@ -406,7 +429,7 @@ describe("type inference", () => {
       if (typecheckOnly()) return
 
       const result = try$
-        .wrap((ctx, next) => next())
+        .wrap((_, next) => next())
         .timeout(100)
         .run(() => 1)
 
@@ -419,7 +442,7 @@ describe("type inference", () => {
       if (typecheckOnly()) return
 
       const result = try$
-        .wrap((ctx, next) => next())
+        .wrap((_, next) => next())
         .signal(new AbortController().signal)
         .run(() => 1)
 
@@ -438,7 +461,7 @@ describe("type inference", () => {
     it("wrap builder does not expose gen", () => {
       if (typecheckOnly()) {
         // @ts-expect-error -- gen is unavailable after wrap()
-        void try$.wrap((ctx, next) => next()).gen
+        void try$.wrap((_, next) => next()).gen
       }
     })
   })

@@ -82,13 +82,18 @@ export abstract class BaseExecution<TResult = unknown> implements Disposable {
       return
     }
 
-    using disposer = new InternalDisposableStack()
-    if (this.#timeoutController) {
-      disposer.use(this.#timeoutController)
-    }
+    const disposer = new InternalDisposableStack()
 
-    if (this.#signalController) {
-      disposer.use(this.#signalController)
+    try {
+      if (this.#timeoutController) {
+        disposer.use(this.#timeoutController)
+      }
+
+      if (this.#signalController) {
+        disposer.use(this.#signalController)
+      }
+    } finally {
+      disposer.dispose()
     }
   }
 

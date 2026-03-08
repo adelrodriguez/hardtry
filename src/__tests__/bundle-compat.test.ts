@@ -43,7 +43,7 @@ describe("bundle compatibility", () => {
       const contents = await Promise.all(jsFiles.map((path) => readFile(path, "utf8")))
 
       for (const content of contents) {
-        expect(content.includes('from "node:')).toBe(false)
+        expect(/from\s*["']node:/.test(content)).toBe(false)
         expect(content.includes("new DisposableStack")).toBe(false)
         expect(content.includes("new AsyncDisposableStack")).toBe(false)
       }
@@ -56,6 +56,15 @@ describe("bundle compatibility", () => {
         [
           "globalThis.DisposableStack = undefined",
           "globalThis.AsyncDisposableStack = undefined",
+          "const NativeSymbol = globalThis.Symbol",
+          "const SymbolShim = function (description) { return NativeSymbol(description) }",
+          "const symbolDescriptors = Object.getOwnPropertyDescriptors(NativeSymbol)",
+          "delete symbolDescriptors.dispose",
+          "delete symbolDescriptors.asyncDispose",
+          "Object.defineProperties(SymbolShim, symbolDescriptors)",
+          "Object.defineProperty(SymbolShim, 'dispose', { value: undefined, writable: true, configurable: true })",
+          "Object.defineProperty(SymbolShim, 'asyncDispose', { value: undefined, writable: true, configurable: true })",
+          "globalThis.Symbol = SymbolShim",
           `const try$ = await import(${JSON.stringify(entrypoint)})`,
           "const runResult = await try$.run(() => 1)",
           'if (runResult !== 1) throw new Error("run() smoke test failed")',
@@ -65,8 +74,8 @@ describe("bundle compatibility", () => {
           'if (flowResult !== "done") throw new Error("flow() smoke test failed")',
           "let cleaned = false",
           "const disposer = try$.dispose()",
-          "disposer.defer(() => { cleaned = true })",
-          "await disposer.disposeAsync()",
+          "disposer.add(() => { cleaned = true })",
+          "await disposer.cleanup()",
           'if (!cleaned) throw new Error("dispose() smoke test failed")',
         ].join("\n")
       )

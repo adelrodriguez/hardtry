@@ -59,10 +59,9 @@ const result = await try$
   - [all and allSettled](#all-and-allsettled)
   - [flow and $exit](#flow-and-exit)
   - [gen](#gen)
-  - [dispose](#dispose)
+- [dispose](#dispose)
 - [API Reference](#api-reference)
 - [Common Recipes](#common-recipes)
-- [Limitations](#limitations)
 - [When not to use tryharder](#when-not-to-use-tryharder)
 - [Contributing](#contributing)
 - [Acknowledgments](#acknowledgments)
@@ -498,39 +497,46 @@ const value = await try$.gen(function* (use) {
 
 ### dispose
 
-Use `dispose()` when cleanup should stay colocated with the workflow that allocates the resource, even across async boundaries.
+Use `dispose()` when cleanup should stay colocated with the workflow that allocates the resource, even across async boundaries. The returned `AsyncDisposer` gives you three core operations:
+
+- `add(fn)` registers a cleanup callback.
+- `use(resource)` tracks a disposable resource.
+- `cleanup()` runs the registered teardown in reverse order.
 
 ```ts
 await using disposer = try$.dispose()
-const connection = await db.connect()
 
-disposer.defer(async () => {
-  await connection.close()
-})
+{
+  const connection = await db.connect()
 
-const user = await connection.users.findById("user_123")
+  disposer.add(async () => {
+    await connection.close()
+  })
+
+  const user = await connection.users.findById("user_123")
+}
 ```
 
-If your runtime or toolchain cannot author `using`, call `await disposer.disposeAsync()` from a `finally` block instead. `tryharder` provides the cleanup runtime internally; it does not require native `DisposableStack` globals.
+`tryharder` handles the cleanup bookkeeping internally, so native `DisposableStack` or `AsyncDisposableStack` globals are not required.
 
 ## API Reference
 
 ### Runtime
 
-| Export         | Description                                                        |
-| -------------- | ------------------------------------------------------------------ |
-| `run`          | Async terminal execution API                                       |
-| `runSync`      | Sync terminal execution API                                        |
-| `retry`        | Create an execution-scoped retry builder                           |
-| `retryOptions` | Normalize retry policy input                                       |
-| `timeout`      | Add a total execution timeout                                      |
-| `signal`       | Add external cancellation to execution or root-level orchestration |
-| `wrap`         | Add top-level observational middleware                             |
-| `all`          | Run a fail-fast parallel named task graph                          |
-| `allSettled`   | Run a settled parallel named task graph                            |
-| `flow`         | Run an ordered workflow with explicit early exit                   |
-| `gen`          | Compose `run(...)` results through generators                      |
-| `dispose`      | Create an `AsyncDisposer` helper                                   |
+| Export         | Description                                                             |
+| -------------- | ----------------------------------------------------------------------- |
+| `run`          | Async terminal execution API                                            |
+| `runSync`      | Sync terminal execution API                                             |
+| `retry`        | Create an execution-scoped retry builder                                |
+| `retryOptions` | Normalize retry policy input                                            |
+| `timeout`      | Add a total execution timeout                                           |
+| `signal`       | Add external cancellation to execution or root-level orchestration      |
+| `wrap`         | Add top-level observational middleware                                  |
+| `all`          | Run a fail-fast parallel named task graph                               |
+| `allSettled`   | Run a settled parallel named task graph                                 |
+| `flow`         | Run an ordered workflow with explicit early exit                        |
+| `gen`          | Compose `run(...)` results through generators                           |
+| `dispose`      | Create an `AsyncDisposer` helper with `add()`, `use()`, and `cleanup()` |
 
 ### Errors
 
@@ -674,11 +680,6 @@ const value = await try$.run({
   catch: () => new InvalidPayloadError("payload was invalid"),
 })
 ```
-
-## Limitations
-
-- `tryharder` ships its own internal cleanup runtime for `dispose()` and task-local `$disposer`, so it does not require native `DisposableStack` or `AsyncDisposableStack` globals at runtime.
-- If you author `using` or `await using` in your own code, your runtime or toolchain still needs to support that syntax or transpile it for you.
 
 ## When not to use tryharder
 

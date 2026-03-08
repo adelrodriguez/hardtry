@@ -33,7 +33,7 @@ class TestExecution extends BaseExecution<number> {
   }
 
   static wrapContext() {
-    return this.createWrapContext(this.createContext({}, undefined))
+    return TestExecution.createWrapContext(TestExecution.createContext({}, undefined))
   }
 }
 

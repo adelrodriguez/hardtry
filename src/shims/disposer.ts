@@ -22,6 +22,8 @@ export type AsyncDisposableLike = {
 export type MaybeDisposable = AsyncDisposableLike | DisposableLike | null | undefined
 
 export interface AsyncDisposer extends AsyncDisposable {
+  add(fn: () => void | PromiseLike<void>): void
+  cleanup(): Promise<void>
   defer(fn: () => void | PromiseLike<void>): void
   use<T extends AsyncDisposable | Disposable | null | undefined>(value: T): T
   disposeAsync(): Promise<void>
@@ -52,13 +54,16 @@ function createSuppressedError(error: unknown, suppressed: unknown): Error {
     return new SuppressedError(error, suppressed, SUPPRESSED_ERROR_MESSAGE)
   }
 
-  const wrapped = error instanceof Error ? error : new Error(String(error))
+  const wrapped = new Error(SUPPRESSED_ERROR_MESSAGE) as Error & {
+    error: unknown
+    suppressed: unknown
+  }
 
-  return Object.assign(wrapped, {
-    error,
-    name: "SuppressedError",
-    suppressed,
-  })
+  wrapped.name = "SuppressedError"
+  wrapped.error = error
+  wrapped.suppressed = suppressed
+
+  return wrapped
 }
 
 function checkCanRegister(disposed: boolean, name: string) {
@@ -109,6 +114,9 @@ export class InternalDisposableStack implements Disposable {
 
   defer(fn: SyncDisposer): void {
     checkCanRegister(this.#disposed, "DisposableStack")
+    if (typeof fn !== "function") {
+      throw new TypeError(`${String(fn)} is not a function`)
+    }
     this.#stack.push(fn)
   }
 
@@ -120,7 +128,8 @@ export class InternalDisposableStack implements Disposable {
       return value
     }
 
-    this.defer(resolveSyncDisposer(value))
+    checkCanRegister(this.#disposed, "DisposableStack")
+    this.#stack.push(resolveSyncDisposer(value))
     return value
   }
 
@@ -163,8 +172,15 @@ class AsyncDisposerStack implements AsyncDisposer {
   #stack: AsyncDisposerFn[] = []
   declare [Symbol.asyncDispose]: () => Promise<void>
 
+  add(fn: AsyncDisposerFn): void {
+    this.defer(fn)
+  }
+
   defer(fn: AsyncDisposerFn): void {
     checkCanRegister(this.#disposed, "AsyncDisposableStack")
+    if (typeof fn !== "function") {
+      throw new TypeError(`${String(fn)} is not a function`)
+    }
     this.#stack.push(fn)
   }
 
@@ -176,12 +192,17 @@ class AsyncDisposerStack implements AsyncDisposer {
       return value
     }
 
-    this.defer(resolveAsyncDisposer(value))
+    checkCanRegister(this.#disposed, "AsyncDisposableStack")
+    this.#stack.push(resolveAsyncDisposer(value))
     return value
   }
 
   async disposeAsync(): Promise<void> {
     await this.#disposeAllAsync()
+  }
+
+  async cleanup(): Promise<void> {
+    await this.disposeAsync()
   }
 
   async #disposeAllAsync(): Promise<void> {
