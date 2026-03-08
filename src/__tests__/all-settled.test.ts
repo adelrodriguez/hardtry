@@ -73,6 +73,20 @@ describe("allSettled", () => {
     expect(result.b).toEqual({ status: "fulfilled", value: 15 })
   })
 
+  it("passes a non-aborted task signal when no external signal is configured", async () => {
+    let taskSignalAborted: boolean | undefined
+
+    const result = await try$.allSettled({
+      a() {
+        taskSignalAborted = this.$signal.aborted
+        return 1
+      },
+    })
+
+    expect(result.a).toEqual({ status: "fulfilled", value: 1 })
+    expect(taskSignalAborted).toBe(false)
+  })
+
   it("rejects dependent task when referenced task fails", async () => {
     const error = new Error("a failed")
 
@@ -180,6 +194,25 @@ describe("allSettled", () => {
     expect(result.b).toEqual({ status: "fulfilled", value: "b done" })
   })
 
+  it("keeps sibling task signals usable after another task fails", async () => {
+    const signalStates: boolean[] = []
+
+    const result = await try$.allSettled({
+      a() {
+        throw new Error("a failed")
+      },
+      async b() {
+        signalStates.push(this.$signal.aborted)
+        await sleep(10)
+        signalStates.push(this.$signal.aborted)
+        return "b done"
+      },
+    })
+
+    expect(signalStates).toEqual([false, false])
+    expect(result.b).toEqual({ status: "fulfilled", value: "b done" })
+  })
+
   it("applies wrap middleware around allSettled execution", async () => {
     let wrapCalls = 0
 
@@ -201,6 +234,33 @@ describe("allSettled", () => {
     expect(result.ok).toEqual({ status: "fulfilled", value: 1 })
     expect(result.fail.status).toBe("rejected")
     expect(wrapCalls).toBe(1)
+  })
+
+  it("runs wrap promise cleanup when allSettled() starts with an already-aborted signal", async () => {
+    const controller = new AbortController()
+    let cleaned = false
+
+    controller.abort(new Error("stop"))
+
+    try {
+      await try$
+        .wrap((_, next) =>
+          Promise.resolve(next()).finally(() => {
+            cleaned = true
+          })
+        )
+        .signal(controller.signal)
+        .allSettled({
+          a() {
+            return 1
+          },
+        })
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(CancellationError)
+    }
+
+    expect(cleaned).toBe(true)
   })
 
   it("honors cancellation signal from builder options", async () => {
@@ -255,5 +315,30 @@ describe("allSettled", () => {
     })
 
     expect(cleaned).toBe(true)
+  })
+
+  it("runs disposer cleanup for both fulfilled and rejected tasks without external signals", async () => {
+    let cleanedA = false
+    let cleanedB = false
+
+    const result = await try$.allSettled({
+      a() {
+        this.$disposer.defer(() => {
+          cleanedA = true
+        })
+        return 1
+      },
+      b() {
+        this.$disposer.defer(() => {
+          cleanedB = true
+        })
+        throw new Error("boom")
+      },
+    })
+
+    expect(result.a).toEqual({ status: "fulfilled", value: 1 })
+    expect(result.b.status).toBe("rejected")
+    expect(cleanedA).toBe(true)
+    expect(cleanedB).toBe(true)
   })
 })

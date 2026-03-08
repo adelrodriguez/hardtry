@@ -33,6 +33,13 @@ export async function resolveWithAbort<V, E>(
   promise: PromiseLike<V>,
   createAbortResult: () => E
 ): Promise<V | E> {
+  if (signal.aborted) {
+    // We return the abort result immediately, so attach a no-op handler to
+    // avoid an unhandled rejection if the original promise rejects later.
+    void Promise.resolve(promise).catch((error: unknown) => void error)
+    return createAbortResult()
+  }
+
   using disposer = new DisposableStack()
 
   const abortPromise = new Promise<E>((resolve) => {

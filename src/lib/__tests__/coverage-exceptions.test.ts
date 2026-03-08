@@ -135,6 +135,87 @@ describe("coverage exceptions", () => {
 
       expect(result).toBe("aborted")
     })
+
+    it("observes the input rejection when resolveWithAbort receives an already-aborted signal", async () => {
+      const controller = new AbortController()
+      controller.abort(new Error("stop"))
+      const unhandledRejections: unknown[] = []
+      const onUnhandledRejection = (reason: unknown) => {
+        unhandledRejections.push(reason)
+      }
+
+      process.on("unhandledRejection", onUnhandledRejection)
+
+      try {
+        const rejected = Promise.reject(new Error("later"))
+        const result = await resolveWithAbort(controller.signal, rejected, () => "aborted" as const)
+
+        await sleep(1)
+
+        expect(result).toBe("aborted")
+        expect(unhandledRejections).toHaveLength(0)
+      } finally {
+        process.off("unhandledRejection", onUnhandledRejection)
+      }
+    })
+
+    it("returns the original promise value when the promise settles before abort", async () => {
+      const controller = new AbortController()
+      let resolvePromise!: (value: string) => void
+      let abortFactoryCalls = 0
+
+      const pending = new Promise<string>((resolve) => {
+        resolvePromise = resolve
+      })
+
+      const resultPromise = resolveWithAbort(controller.signal, pending, () => {
+        abortFactoryCalls += 1
+        return "aborted" as const
+      })
+
+      resolvePromise("done")
+
+      const result = await resultPromise
+      controller.abort(new Error("too late"))
+
+      expect(result).toBe("done")
+      expect(abortFactoryCalls).toBe(0)
+    })
+
+    it("returns the abort result when abort happens after registration and before settlement", async () => {
+      const controller = new AbortController()
+      let resolvePromise!: (value: string) => void
+
+      const pending = new Promise<string>((resolve) => {
+        resolvePromise = resolve
+      })
+
+      const resultPromise = resolveWithAbort(controller.signal, pending, () => "aborted" as const)
+
+      controller.abort(new Error("stop"))
+      resolvePromise("done")
+
+      expect(await resultPromise).toBe("aborted")
+    })
+
+    it("calls createAbortResult exactly once when abort wins", async () => {
+      const controller = new AbortController()
+      let abortFactoryCalls = 0
+
+      const pending = new Promise<string>((resolve) => {
+        void resolve
+      })
+
+      const resultPromise = resolveWithAbort(controller.signal, pending, () => {
+        abortFactoryCalls += 1
+        return "aborted" as const
+      })
+
+      controller.abort(new Error("stop"))
+
+      expect(await resultPromise).toBe("aborted")
+      expect(abortFactoryCalls).toBe(1)
+    })
   })
 
   describe("guard branches", () => {

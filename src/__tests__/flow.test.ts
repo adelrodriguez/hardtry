@@ -148,6 +148,20 @@ describe("flow", () => {
     expect(result).toBe("api-value-transformed")
   })
 
+  it("passes a non-aborted task signal when no external signal is configured", async () => {
+    let taskSignalAborted: boolean | undefined
+
+    const result = await try$.flow({
+      a() {
+        taskSignalAborted = this.$signal.aborted
+        return this.$exit("done" as const)
+      },
+    })
+
+    expect(result).toBe("done")
+    expect(taskSignalAborted).toBe(false)
+  })
+
   it("returns early when a dependent task reads a task that already exited", async () => {
     const result = await try$.flow({
       a() {
@@ -174,6 +188,28 @@ describe("flow", () => {
     expect(result).toBe("done")
   })
 
+  it("aborts dependent waiters after early exit", async () => {
+    let dependencySawAbort = false
+
+    const result = await try$.flow({
+      a() {
+        return this.$exit("done" as const)
+      },
+      async b() {
+        try {
+          await this.$result.a
+        } catch {
+          dependencySawAbort = this.$signal.aborted
+        }
+
+        return null
+      },
+    })
+
+    expect(result).toBe("done")
+    expect(dependencySawAbort).toBe(true)
+  })
+
   it("applies wrap middleware in chained flow execution", async () => {
     let wrapCalls = 0
 
@@ -191,6 +227,54 @@ describe("flow", () => {
 
     expect(result).toBe("done")
     expect(wrapCalls).toBe(1)
+  })
+
+  it("runs wrap promise cleanup when flow() starts with an already-aborted signal", async () => {
+    const controller = new AbortController()
+    let cleaned = false
+
+    controller.abort(new Error("stop"))
+
+    try {
+      await try$
+        .wrap((_, next) =>
+          Promise.resolve(next()).finally(() => {
+            cleaned = true
+          })
+        )
+        .signal(controller.signal)
+        .flow({
+          a() {
+            return this.$exit("done")
+          },
+        })
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(CancellationError)
+    }
+
+    expect(cleaned).toBe(true)
+  })
+
+  it("runs cleanup after early exit even when a task starts through normal dependency flow", async () => {
+    let cleaned = false
+
+    const result = await try$.flow({
+      a() {
+        this.$disposer.defer(() => {
+          cleaned = true
+        })
+
+        return 1
+      },
+      async b() {
+        const value = await this.$result.a
+        return this.$exit(value + 1)
+      },
+    })
+
+    expect(result).toBe(2)
+    expect(cleaned).toBe(true)
   })
 
   it("retries leaf work inside flow tasks via nested run()", async () => {
@@ -251,6 +335,58 @@ describe("flow", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(CancellationError)
     }
+  })
+
+  it("propagates external cancellation while tasks use disposer and dependency results", async () => {
+    const controller = new AbortController()
+    let cleaned = false
+    let dependencySawAbort = false
+
+    const pending = try$.signal(controller.signal).flow({
+      async a() {
+        this.$disposer.defer(() => {
+          cleaned = true
+        })
+
+        if (!this.$signal.aborted) {
+          await new Promise<void>((resolve) => {
+            this.$signal.addEventListener(
+              "abort",
+              () => {
+                resolve()
+              },
+              { once: true }
+            )
+          })
+        }
+
+        throw this.$signal.reason
+      },
+      async b() {
+        try {
+          await this.$result.a
+        } catch {
+          dependencySawAbort = this.$signal.aborted
+          throw this.$signal.reason
+        }
+
+        return this.$exit("late")
+      },
+    })
+
+    setTimeout(() => {
+      controller.abort(new Error("stop"))
+    }, 5)
+
+    try {
+      await pending
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(CancellationError)
+    }
+
+    expect(cleaned).toBe(true)
+    expect(dependencySawAbort).toBe(true)
   })
 
   it("rejects when a flow task awaits its own result", async () => {

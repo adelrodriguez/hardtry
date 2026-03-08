@@ -132,7 +132,7 @@ class RunExecution<T, E, Ctx extends BaseTryCtx> extends BaseExecution<
 
         if (checkIsPromiseLike(result)) {
           // oxlint-disable-next-line no-await-in-loop
-          const raced = await this.race(Promise.resolve(result))
+          const raced = await this.race(result)
           return raced
         }
 
