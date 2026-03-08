@@ -113,7 +113,7 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: bun run build && npm pack --dry-run && bun run release
+          publish: bun run release:ci
           version: bun run version
           title: "chore: release"
         env:
