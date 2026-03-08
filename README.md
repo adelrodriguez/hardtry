@@ -511,6 +511,8 @@ disposer.defer(async () => {
 const user = await connection.users.findById("user_123")
 ```
 
+If your runtime or toolchain cannot author `using`, call `await disposer.disposeAsync()` from a `finally` block instead. `tryharder` provides the cleanup runtime internally; it does not require native `DisposableStack` globals.
+
 ## API Reference
 
 ### Runtime
@@ -528,7 +530,7 @@ const user = await connection.users.findById("user_123")
 | `allSettled`   | Run a settled parallel named task graph                            |
 | `flow`         | Run an ordered workflow with explicit early exit                   |
 | `gen`          | Compose `run(...)` results through generators                      |
-| `dispose`      | Create an `AsyncDisposableStack` helper                            |
+| `dispose`      | Create an `AsyncDisposer` helper                                   |
 
 ### Errors
 
@@ -549,6 +551,7 @@ Exports from `tryharder/types`:
 | Export             | Description                                          |
 | ------------------ | ---------------------------------------------------- |
 | `AllSettledResult` | Settled result map returned by `allSettled(...)`     |
+| `AsyncDisposer`    | Async cleanup helper returned by `dispose()`         |
 | `SettledFulfilled` | Fulfilled branch of a settled task result            |
 | `SettledRejected`  | Rejected branch of a settled task result             |
 | `SettledResult`    | Union of fulfilled and rejected settled task results |
@@ -557,7 +560,7 @@ Exports from `tryharder/types`:
 ```ts
 import * as try$ from "tryharder"
 import { Panic, TimeoutError, UnhandledException } from "tryharder/errors"
-import type { FlowExit, SettledResult } from "tryharder/types"
+import type { AsyncDisposer, FlowExit, SettledResult } from "tryharder/types"
 ```
 
 ## Common Recipes
@@ -674,10 +677,8 @@ const value = await try$.run({
 
 ## Limitations
 
-- `tryharder` currently assumes `DisposableStack` and `AsyncDisposableStack` are available at runtime because the executor layer uses them internally, not just when you call `dispose()` yourself.
-- This can break consumers on runtimes that do not yet provide those globals, notably Firefox and Safari.
-- The tracked fix is [#36 Bundle DisposableStack polyfill for runtimes without native support](https://github.com/adelrodriguez/tryharder/issues/36).
-- Until that issue is resolved, use `tryharder` on runtimes with native disposable-stack support or provide a compatible polyfill before loading the package.
+- `tryharder` ships its own internal cleanup runtime for `dispose()` and task-local `$disposer`, so it does not require native `DisposableStack` or `AsyncDisposableStack` globals at runtime.
+- If you author `using` or `await using` in your own code, your runtime or toolchain still needs to support that syntax or transpile it for you.
 
 ## When not to use tryharder
 

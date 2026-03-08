@@ -1,3 +1,4 @@
+import { InternalDisposableStack } from "../shims/disposer"
 import { Panic, type PanicCode } from "./errors"
 
 export function assertUnreachable(value: never, code: PanicCode): never {
@@ -40,7 +41,7 @@ export async function resolveWithAbort<V, E>(
     return createAbortResult()
   }
 
-  using disposer = new DisposableStack()
+  using disposer = new InternalDisposableStack()
 
   const abortPromise = new Promise<E>((resolve) => {
     const onAbort = () => {

@@ -5,7 +5,7 @@ import type {
   TimeoutError,
   UnhandledException,
 } from "../errors"
-import type { FlowExit, SettledResult } from "../types"
+import type { AsyncDisposer, FlowExit, SettledResult } from "../types"
 import * as try$ from "../index"
 
 type Expect<T extends true> = T
@@ -32,6 +32,11 @@ describe("type inference", () => {
     it("run async try with sync catch returns Promise<T | E>", () => {
       const result = try$.run({ catch: () => "err" as const, try: () => Promise.resolve(42) })
       type _assert = Expect<Equal<typeof result, Promise<number | "err">>>
+    })
+
+    it("dispose returns AsyncDisposer", () => {
+      const disposer = try$.dispose()
+      type _assert = Expect<Equal<typeof disposer, AsyncDisposer>>
     })
 
     it("ctx.retry is not available without retry config", () => {
@@ -186,6 +191,34 @@ describe("type inference", () => {
       if (typecheckOnly()) {
         // @ts-expect-error -- wrap() is unavailable after retry(), timeout(), or signal()
         void signalBuilder.wrap
+      }
+    })
+
+    it("orchestration task context exposes AsyncDisposer", () => {
+      if (typecheckOnly()) {
+        void try$.all({
+          a() {
+            const disposer = this.$disposer
+            type _assert = Expect<Equal<typeof disposer, AsyncDisposer>>
+            return 1
+          },
+        })
+
+        void try$.allSettled({
+          a() {
+            const disposer = this.$disposer
+            type _assert = Expect<Equal<typeof disposer, AsyncDisposer>>
+            return 1
+          },
+        })
+
+        void try$.flow({
+          a() {
+            const disposer = this.$disposer
+            type _assert = Expect<Equal<typeof disposer, AsyncDisposer>>
+            return this.$exit("done" as const)
+          },
+        })
       }
     })
 

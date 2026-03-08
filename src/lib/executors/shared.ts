@@ -1,4 +1,6 @@
+import type { AsyncDisposer } from "../../shims/disposer"
 import type { BuilderConfig } from "../builder"
+import { createAsyncDisposer, defineAsyncDisposeAlias } from "../../shims/disposer"
 import { Panic, UnhandledException } from "../errors"
 import { invariant } from "../utils"
 import { BaseExecution } from "./base"
@@ -25,7 +27,7 @@ export type ResultProxy<T extends TaskRecord> = {
 export interface TaskContext<T extends TaskRecord> {
   $result: ResultProxy<T>
   $signal: AbortSignal
-  $disposer: AsyncDisposableStack
+  $disposer: AsyncDisposer
 }
 
 export type InferredTaskContext<T extends TaskRecord> = {
@@ -35,7 +37,7 @@ export type InferredTaskContext<T extends TaskRecord> = {
       : Promise<ReturnType<T[K]>>
   }
   $signal: AbortSignal
-  $disposer: AsyncDisposableStack
+  $disposer: AsyncDisposer
 }
 
 export type AllValue<T extends TaskRecord> = {
@@ -127,7 +129,7 @@ export abstract class OrchestrationExecution<TResult> extends BaseExecution<Prom
 export abstract class TaskGraphExecutionBase<
   T extends TaskRecord,
   TContext extends TaskContext<T>,
-> {
+> implements AsyncDisposable {
   protected readonly tasks: T
   protected readonly taskNames: Array<keyof T & string>
   protected readonly results!: Map<keyof T, unknown>
@@ -135,8 +137,9 @@ export abstract class TaskGraphExecutionBase<
   protected readonly resolvers!: Map<keyof T, ResolverPair[]>
   protected readonly internalController: AbortController = new AbortController()
   protected readonly taskSignal: AbortSignal
-  protected readonly disposer: AsyncDisposableStack = new AsyncDisposableStack()
+  protected readonly disposer: AsyncDisposer = createAsyncDisposer()
   protected firstRejection: unknown
+  declare [Symbol.asyncDispose]: () => Promise<void>
 
   constructor(signal: AbortSignal | undefined, tasks: T) {
     this.tasks = tasks
@@ -149,7 +152,7 @@ export abstract class TaskGraphExecutionBase<
       : this.internalController.signal
   }
 
-  async [Symbol.asyncDispose](): Promise<void> {
+  async disposeAsync(): Promise<void> {
     await this.disposer.disposeAsync()
   }
 
@@ -313,6 +316,7 @@ export abstract class TaskGraphExecutionBase<
     }
   }
 }
+defineAsyncDisposeAlias(TaskGraphExecutionBase.prototype)
 
 export class TaskExecution<T extends TaskRecord> extends TaskGraphExecutionBase<T, TaskContext<T>> {
   readonly #mode: TaskExecutionMode
