@@ -41,6 +41,8 @@
     }
   },
   "scripts": {
+    "bench": "bun run build && bun --expose-gc bench/index.ts",
+    "bench:ci": "bun run build && bun --expose-gc bench/index.ts --json | bun bench/report.ts",
     "build": "bunup",
     "bump:deps": "bun update --interactive",
     "check": "adamantite check",
@@ -62,6 +64,7 @@
     "adamantite": "^0.29.1",
     "bunup": "0.16.29",
     "knip": "5.85.0",
+    "mitata": "^1.0.34",
     "oxfmt": "0.34.0",
     "oxlint": "1.49.0",
     "oxlint-tsgolint": "0.14.2",

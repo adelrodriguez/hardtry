@@ -18,5 +18,6 @@
   },
   "ignoreExportsUsedInFile": true,
   "ignore": [".plans/**"],
+  "entry": ["src/errors.ts", "src/index.ts", "src/types.ts"],
   "project": ["src/**/*.ts"]
 }
