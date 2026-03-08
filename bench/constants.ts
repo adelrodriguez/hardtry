@@ -1,0 +1,1 @@
+export const BENCHMARK_SUITE_VERSION = 2
